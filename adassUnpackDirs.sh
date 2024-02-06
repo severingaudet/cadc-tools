@@ -95,6 +95,10 @@ done
 # Removing unnecessary extensions
 
 cd $TEMP_DIR
+find * -name "*slides*.pdf" -exec echo "rm {}" \; -exec rm {} \;
+find * -name "*sliides*.pdf" -exec echo "rm {}" \; -exec rm {} \;
+find * -name "*lightning*.pdf" -exec echo "rm {}" \; -exec rm {} \;
+find * -name "*poster*pdf" -exec echo "rm {}" \; -exec rm {} \;
 find * -name "*.bst" -exec echo "rm {}" \; -exec rm {} \;
 find * -name "*.sty" -exec echo "rm {}" \; -exec rm {} \;
 find * -name "*.aux" -exec echo "rm {}" \; -exec rm {} \;
