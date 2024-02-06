@@ -20,7 +20,7 @@ download_dir () {
     NO_FILES=true
     FIRST_FILE=true
     BUNDLE_COPIED=false
-    TIME_ORDERED_FILE_LIST=$(vls -lt $SRC_DIR | grep -v "   adass2022_b57" | grep -v '.pptx' | grep -v '.pdf' | grep -v '.mp4' | grep -v '.avi' | awk '{print $NF}' ) 
+    TIME_ORDERED_FILE_LIST=$(vls -lt $SRC_DIR | grep -v "   adass2022_b57" | grep -v '.pptx' | grep -v '.mp4' | grep -v '.avi' | awk '{print $NF}' ) 
 
     for FILE in $TIME_ORDERED_FILE_LIST
     do
