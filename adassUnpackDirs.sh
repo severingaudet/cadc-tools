@@ -66,14 +66,20 @@ echo "rm P18/P18_poster.pdf.pdf"
 rm -f P18/P18_poster.pdf.pdf
 echo "rm P27/P27_poster.pdf"
 rm -f P27/P27_poster.pdf
+echo "rm P24/ADASS_template.tex"
+rm -f P24/ADASS_template.tex
 echo "rm P68/P68_poster.pdf"
 rm -f P68/P68_poster.pdf
-echo "B07/B07_slides.pdf"
+echo "rm B07/B07_slides.pdf"
 rm -f B07/B07_slides.pdf
-echo "I08/LICENSE"
+echo "rm I08/LICENSE"
 rm -f I08/LICENSE
-echo "I08/oldauthors"
+echo "rm I08/oldauthors"
 rm -f I08/oldauthors
+echo "rm I08/Makefile"
+rm -f I08/Makefile
+echo "rm I10/ADASS.pdf"
+rm -f I10/ADASS.pdf
 
 echo "mv P60_v2 -> P60"
 for i in $TEMP_DIR/P60/* ; do
