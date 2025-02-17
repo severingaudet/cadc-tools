@@ -7,10 +7,10 @@ CADC_TAP="/Users/gaudet_1/.pyenv/shims/cadc-tap query -q --timeout=15 -a -k -m 1
 
 declare -a collectionInstrument=(
     "BRITE-Constellation,BRITE-AUSTRIA"
-#    "BRITE-Constellation,BRITE-HEWELIUSZ"
-#    "BRITE-Constellation,BRITE-LEM"
-#    "BRITE-Constellation,BRITE-Toronto"
-#    "BRITE-Constellation,UniBRITE"
+    "BRITE-Constellation,BRITE-HEWELIUSZ"
+    "BRITE-Constellation,BRITE-LEM"
+    "BRITE-Constellation,BRITE-Toronto"
+    "BRITE-Constellation,UniBRITE"
 )
 
 declare -a obsFields=(
@@ -152,14 +152,15 @@ declare -a planeFields=(
 queryObsFieldNotNull () {
     COLLECTION="$1"
     INSTRUMENT_NAME="$2"
-    FIELD="$3"
-    TOTAL_OBS="$4"
+    TOTAL_OBS="$3"
+    FIELD="$4"
+    NUM_NOT_NULL=0
     QUERY="select count(*) 
         from caom2.Observation
-        where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"' and '"$FIELD"' is not null"
+        where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"' and $FIELD is not null"
     NUM_NOT_NULL=$($CADC_TAP "$QUERY")
     PERCENTAGE_NOT_NULL=$(echo "scale=2; $NUM_NOT_NULL / $TOTAL_OBS * 100" | bc)
-    echo "$COLLECTION,$_NAME,'Observation',$FIELD,$TOTAL_OBS,$NUM_NOT_NULL,$PERCENTAGE_NOT_NULL"
+    echo "$COLLECTION,$INSTRUMENT_NAME,$FIELD,$TOTAL_OBS,$NUM_NOT_NULL,$PERCENTAGE_NOT_NULL"
 }
 
 queryPlaneFieldNotNull () {
@@ -167,6 +168,7 @@ queryPlaneFieldNotNull () {
     INSTRUMENT_NAME="$2"
     TOTAL_PLANES="$3"
     FIELD="$4"
+    NUM_NOT_NULL=0
     QUERY="select count(*) 
         from caom2.Observation join caom2.Plane on caom2.Observation.obsID = caom2.Plane.obsID
         where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"' and $FIELD is not null"
@@ -179,14 +181,13 @@ queryPlaneFieldNotNull () {
 # Functions for looping by COLLECTION, INSTRUMENT_NAME
 #
 
-queryPlane () {
+queryPlaneByCollection () {
     COLLECTION="$1"
     INSTRUMENT_NAME="$2"
     QUERY="select count(*) 
         from caom2.Observation join caom2.Plane on caom2.Observation.obsID = caom2.Plane.obsID
         where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"'"
     TOTAL_PLANES=$($CADC_TAP "$QUERY")
-    echo "$COLLECTION" "$INSTRUMENT_NAME" "$TOTAL_PLANES" "$FIELD"
     for FIELD in "${planeFields[@]}"
     do
         queryPlaneFieldNotNull "$COLLECTION" "$INSTRUMENT_NAME" "$TOTAL_PLANES" "$FIELD"
@@ -199,20 +200,20 @@ queryObservationByCollection () {
     QUERY="select count(*)
         from caom2.Observation 
         where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"'"
-    OBS_TOTAL=$($CADC_TAP "$QUERY")
+    TOTAL_OBS=$($CADC_TAP "$QUERY")
     for FIELD in "${obsFields[@]}"
     do
-        queryObsFieldNotNull "$COLLECTION" "$INSTRUMENT_NAME" "$FIELD" "$OBS_TOTAL"
+        queryObsFieldNotNull "$COLLECTION" "$INSTRUMENT_NAME" "$TOTAL_OBS" "$FIELD" 
     done
 }
 
 queryByCollection () {
     for COLLECTION_INSTRUMENT in "${collectionInstrument[@]}"
     do
-       IFS=',' read -r -a CI <<< "$COLLECTION_INSTRUMENT"
-#       queryObservationByCollection "${CI[0]}" "${CI[1]}"
-        queryPlaneByCollection "${CI[0]}" "${CI[1]}"
-done
+        IFS=',' read -r -a CI <<< "$COLLECTION_INSTRUMENT"
+        queryObservationByCollection "${CI[0]}" "${CI[1]}"
+#        queryPlaneByCollection "${CI[0]}" "${CI[1]}"
+    done
 }
 
 #
@@ -220,14 +221,13 @@ done
 # a better view of the data.
 #
 
-queryObservationByField () {
+queryObsByField () {
     FIELD="$1"
     for COLLECTION_INSTRUMENT in "${collectionInstrument[@]}"
     do
         IFS=',' read -r -a CI <<< "$COLLECTION_INSTRUMENT"
         COLLECTION="${CI[0]}"
         INSTRUMENT_NAME="${CI[1]}"
-        echo $FIELD, $COLLECTION, $INSTRUMENT_NAME
         QUERY="select count(*)
             from caom2.Observation 
             where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"'"
@@ -243,7 +243,6 @@ queryPlaneByField () {
         IFS=',' read -r -a CI <<< "$COLLECTION_INSTRUMENT"
         COLLECTION="${CI[0]}"
         INSTRUMENT_NAME="${CI[1]}"
-        echo $FIELD, $COLLECTION, $INSTRUMENT_NAME
         QUERY="select count(*) 
             from caom2.Observation join caom2.Plane on caom2.Observation.obsID = caom2.Plane.obsID
              where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"'"
@@ -253,12 +252,15 @@ queryPlaneByField () {
 }
 
 queryByField () {
+    for FIELD in "${obsFields[@]}"
+    do
+        queryObsByField "$FIELD"
+    done
     for FIELD in "${planeFields[@]}"
     do
-        echo "$FIELD"
-        queryObservationByField "$FIELD"
- #       queryPlaneByField "$FIELD"
+        queryPlaneByField "$FIELD"
     done
 }
 
-queryByField
+#queryByField
+queryByCollection
