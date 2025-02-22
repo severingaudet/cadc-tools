@@ -3,15 +3,9 @@
 cadc-get-cert -n -q 
 ARGUS="https://ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/argus"
 DATE=`date "+%Y-%m-%dT%H:%M:%S"`
-CADC_TAP="/Users/gaudet_1/.pyenv/shims/cadc-tap query -q --timeout=15 -a -k -m 1 -s $ARGUS"
-
-declare -a collectionInstrument=(
-    "BRITE-Constellation,BRITE-AUSTRIA"
-    "BRITE-Constellation,BRITE-HEWELIUSZ"
-    "BRITE-Constellation,BRITE-LEM"
-    "BRITE-Constellation,BRITE-Toronto"
-    "BRITE-Constellation,UniBRITE"
-)
+CADC_TAP="/Users/gaudet_1/.pyenv/shims/cadc-tap query -q --timeout=15 -a -k -s $ARGUS"
+OBS_FILENAME="collectionInstrumentTotalObs.csv"
+PLANES_FILENAME="collectionInstrumentTotalPlanes.csv"
 
 declare -a obsFields=(
     "caom2.Observation.accMetaChecksum"
@@ -122,7 +116,7 @@ declare -a planeFields=(
     "caom2.Plane.position_sampleSize"
     "caom2.Plane.position_timeDependent"
     "caom2.Plane.productID"
-    "caom2.Plane.provenance_inputs"
+#    "caom2.Plane.provenance_inputs"
     "caom2.Plane.provenance_keywords"
     "caom2.Plane.provenance_lastExecuted"
     "caom2.Plane.provenance_name"
@@ -149,32 +143,94 @@ declare -a planeFields=(
 # Generic queries for Observations and Planes used by both looping by COLLECTION, INSTRUMENT_NAME or by FIELD
 #
 
+processObservationFields () {
+    for FIELD in "${obsFields[@]}" 
+    do
+        FILENAME="$DATE-$FIELD.csv"
+        SUMMARY_TOTAL_OBS=0
+        SUMMARY_NUM_NOT_NULL=0
+
+        while IFS="," read -r COLLECTION INSTRUMENT_NAME TOTAL_OBS
+        do
+            echo "$FIELD $COLLECTION $INSTRUMENT_NAME $TOTAL_OBS"
+            QUERY="select count(*)
+                    from caom2.Observation
+                    where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"' and $FIELD is not null"
+            NUM_NOT_NULL=$($CADC_TAP "$QUERY")
+
+            PERCENTAGE_NOT_NULL=$(echo "scale=2; $NUM_NOT_NULL / $TOTAL_OBS * 100" | bc)
+            SUMMARY_TOTAL_OBS=$(($SUMMARY_TOTAL_OBS + $TOTAL_OBS))
+            SUMMARY_NUM_NOT_NULL=$(($SUMMARY_NUM_NOT_NULL + $NUM_NOT_NULL))
+
+            echo "$FIELD,$COLLECTION,$INSTRUMENT_NAME,$TOTAL_OBS,$NUM_NOT_NULL,$PERCENTAGE_NOT_NULL" >> $FILENAME
+        done < $OBS_FILENAME
+
+        SUMMARY_PERCENTAGE_NOT_NULL=$(echo "scale=6; $SUMMARY_NUM_NOT_NULL / $SUMMARY_TOTAL_OBS * 100" | bc)
+        echo "$FIELD,SUMMARY, ,$SUMMARY_TOTAL_OBS,$SUMMARY_NUM_NOT_NULL,$SUMMARY_PERCENTAGE_NOT_NULL" >> $FILENAME
+    done
+}
+
+processPlaneFields () {
+    for FIELD in "${planeFields[@]}" 
+    do   
+        FILENAME="$DATE-$FIELD.csv"
+        SUMMARY_TOTAL_PLANES=0
+        SUMMARY_NUM_NOT_NULL=0
+
+        while IFS="," read -r COLLECTION INSTRUMENT_NAME TOTAL_PLANES
+        do
+            echo "$FIELD $COLLECTION $INSTRUMENT_NAME $TOTAL_PLANES"
+            QUERY="select count(*) 
+                from caom2.Observation join caom2.Plane on caom2.Observation.obsID = caom2.Plane.obsID
+                where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"' and $FIELD is not null"
+            NUM_NOT_NULL=$($CADC_TAP "$QUERY")
+
+            PERCENTAGE_NOT_NULL=$(echo "scale=2; $NUM_NOT_NULL / $TOTAL_PLANES * 100" | bc)
+            SUMMARY_TOTAL_PLANES=$(($SUMMARY_TOTAL_PLANES + $TOTAL_PLANES))
+            SUMMARY_NUM_NOT_NULL=$(($SUMMARY_NUM_NOT_NULL + $NUM_NOT_NULL))
+
+            echo "$FIELD,$COLLECTION,$INSTRUMENT_NAME,$TOTAL_PLANES,$NUM_NOT_NULL,$PERCENTAGE_NOT_NULL" >> $FILENAME
+
+
+            queryPlaneFieldNotNull "$FIELD" "$COLLECTION" "$INSTRUMENT_NAME" "$TOTAL_PLANES" 
+        done < $PLANES_FILENAME
+
+        SUMMARY_PERCENTAGE_NOT_NULL=$(echo "scale=6; $SUMMARY_NUM_NOT_NULL / $SUMMARY_TOTAL_PLANES * 100" | bc)
+        echo "$FIELD,SUMMARY, ,$SUMMARY_TOTAL_PLANES,$SUMMARY_NUM_NOT_NULL,$SUMMARY_PERCENTAGE_NOT_NULL" >> $FILENAME
+    done
+}
+
 queryObsFieldNotNull () {
-    COLLECTION="$1"
-    INSTRUMENT_NAME="$2"
-    TOTAL_OBS="$3"
-    FIELD="$4"
-    NUM_NOT_NULL=0
-    QUERY="select count(*) 
+    FIELD="$1"
+    COLLECTION="$2"
+    INSTRUMENT_NAME="$3"
+    TOTAL_OBS="$4"
+
+    QUERY="select count(*)
         from caom2.Observation
         where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"' and $FIELD is not null"
     NUM_NOT_NULL=$($CADC_TAP "$QUERY")
+
     PERCENTAGE_NOT_NULL=$(echo "scale=2; $NUM_NOT_NULL / $TOTAL_OBS * 100" | bc)
-    echo "$COLLECTION,$INSTRUMENT_NAME,$FIELD,$TOTAL_OBS,$NUM_NOT_NULL,$PERCENTAGE_NOT_NULL"
+    SUMMARY_TOTAL_OBS=$(($SUMMARY_TOTAL_OBS + $TOTAL_OBS))
+    SUMMARY_NUM_NOT_NULL=$(($SUMMARY_NUM_NOT_NULL + $NUM_NOT_NULL))
+
+    echo "$FIELD,$COLLECTION,$INSTRUMENT_NAME,$TOTAL_OBS,$NUM_NOT_NULL,$PERCENTAGE_NOT_NULL" >> $FILENAME
 }
 
 queryPlaneFieldNotNull () {
-    COLLECTION="$1"
-    INSTRUMENT_NAME="$2"
-    TOTAL_PLANES="$3"
-    FIELD="$4"
+    FIELD="$1"
+    COLLECTION="$2"
+    INSTRUMENT_NAME="$3"
+    TOTAL_PLANES="$4"
+    FILENAME="$DATE-$FIELD.csv"
     NUM_NOT_NULL=0
     QUERY="select count(*) 
         from caom2.Observation join caom2.Plane on caom2.Observation.obsID = caom2.Plane.obsID
         where collection = '"$COLLECTION"' and instrument_name = '"$INSTRUMENT_NAME"' and $FIELD is not null"
     NUM_NOT_NULL=$($CADC_TAP "$QUERY")
     PERCENTAGE_NOT_NULL=$(echo "scale=2; $NUM_NOT_NULL / $TOTAL_PLANES * 100" | bc)
-    echo "$COLLECTION,$INSTRUMENT_NAME,$FIELD,$TOTAL_PLANES,$NUM_NOT_NULL,$PERCENTAGE_NOT_NULL"
+    echo "$FIELD,$COLLECTION,$INSTRUMENT_NAME,$TOTAL_PLANES,$NUM_NOT_NULL,$PERCENTAGE_NOT_NULL" >> $FILENAME
 }
 
 #
@@ -194,7 +250,7 @@ queryPlaneByCollection () {
     done
 }
 
-queryObservationByCollection () {
+queryObsByCollection () {
     COLLECTION="$1"
     INSTRUMENT_NAME="$2"
     QUERY="select count(*)
@@ -211,13 +267,13 @@ queryByCollection () {
     for COLLECTION_INSTRUMENT in "${collectionInstrument[@]}"
     do
         IFS=',' read -r -a CI <<< "$COLLECTION_INSTRUMENT"
-        queryObservationByCollection "${CI[0]}" "${CI[1]}"
-#        queryPlaneByCollection "${CI[0]}" "${CI[1]}"
+        queryObsByCollection "${CI[0]}" "${CI[1]}"
+        queryPlaneByCollection "${CI[0]}" "${CI[1]}"
     done
 }
 
 #
-# Functions for looping by FIELD instead of by COLLECTION, INStUMENT_NAME. This is less efficient but provides
+# Functions for looping by FIELD instead of by COLLECTION, INSTRUMENT_NAME. This is less efficient but provides
 # a better view of the data.
 #
 
@@ -262,5 +318,5 @@ queryByField () {
     done
 }
 
-#queryByField
-queryByCollection
+processObservationFields
+processPlaneFields
