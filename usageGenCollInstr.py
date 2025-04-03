@@ -1,6 +1,14 @@
+# This script is used to generate CSV files containing the percentage of null values
+# for each collection/instrument combination in the caom2.Observation and caom2.Plane tables.
+
 from astroquery.cadc import Cadc
 import argparse
 import pandas as pd
+
+## Execute a query against the CAOM2 database and save the results to a CSV file.
+## This function takes a SQL query, a field name, and a filename as arguments.
+## It creates an asynchronous job, runs it, and waits for the results.
+## If the job raises an error, it will be printed.
 
 def execute_query(query, field, filename):
     job = service.create_async(query)
@@ -9,6 +17,9 @@ def execute_query(query, field, filename):
     job.raise_if_error()
     results = job.fetch_result().to_table().to_pandas()
     results.to_csv(filename, index=True)
+
+## Calculate the percentage of null values for each collection/instrument
+## combination in the results DataFrame.
 
 def calculate_percentages(filename, array_coll_instr):
     cp_results = pd.read_csv(filename)
@@ -21,27 +32,21 @@ def calculate_percentages(filename, array_coll_instr):
 
         cp_results.to_csv(filename, index=False)
 
+
+## Find the number of instances for a given collection and instrument name
+## in the array_coll_instr DataFrame.
+## This function is used to calculate the percentage of null values.
+
 def find_num_instances(collection, instrument_name, array_coll_instr):
-    print(f"fni collection = {collection}, instrument_name = {instrument_name}")
     row = array_coll_instr[(array_coll_instr['collection'] == collection) & (array_coll_instr['instrument_name'] == instrument_name)]
     return row['num_instances'].values[0]
 
-def calculate_summary(field, filename, num_coll_instr, sum_instances_coll_instr):
-    results = pd.read_csv(filename)
-    field_coll_instr = len(results)
-    print(f"Number of collection/instrument for {field}: {field_coll_instr}")
-    field_instances = results['num_null'].sum()
-    print(f"Total instances for {field}: {field_instances}")
-
-    percentage_null_coll_instr = field_coll_instr * 100 / num_coll_instr
-    percentage_null_instances = field_instances * 100 / sum_instances_coll_instr
-    print(f"Summary,{field},{num_coll_instr},{field_coll_instr},{percentage_null_coll_instr:.2f},{sum_instances_coll_instr},{field_instances},{percentage_null_instances:.2f}")
-    with open(filename, 'a') as f:
-        f.write(",Field name, number of collection/instrument, collection/instrument with null values, percentage of collection/instrument with null values, number of field instances, field instances with null values, percentage of field instances with null values\n")
-        f.write(f"Summary,{field},{num_coll_instr},{field_coll_instr},{percentage_null_coll_instr:.2f},{sum_instances_coll_instr},{field_instances},{percentage_null_instances:.2f}\n")
+## Process the observation field and calculate the percentage of null values
+## for each collection/instrument combination.
+## This function is used to generate the CSV file for each field.
 
 def process_observation_field(field, array_coll_instr_obs, num_coll_instr_obs, sum_instances_coll_instr_obs):
-    filename = f"byField/{field}.csv"
+    filename = f"collInstrByField/{field}.csv"
     query = f"""select collection, instrument_name, count(*) as num_null
         from caom2.Observation
         where instrument_name is not null and instrument_name != 'NULL' and {field} is null
@@ -49,10 +54,13 @@ def process_observation_field(field, array_coll_instr_obs, num_coll_instr_obs, s
         order by collection, instrument_name"""
     execute_query(query, field, filename)
     calculate_percentages(filename, array_coll_instr_obs)
-#    calculate_summary(field, filename, num_coll_instr_obs, sum_instances_coll_instr_obs)
+
+## Process the plane field and calculate the percentage of null values
+## for each collection/instrument combination.
+## This function is used to generate the CSV file for each field.
 
 def process_plane_field(field, array_coll_instr_planes, num_coll_instr_planes, sum_instances_coll_instr_planes):
-    filename = f"byField/{field}.csv"
+    filename = f"collInstrByField/{field}.csv"
     query = f"""select collection, instrument_name, count(*) as num_null
         from caom2.Observation join caom2.Plane on caom2.Observation.obsID = caom2.Plane.obsID
         where instrument_name is not null and instrument_name != 'NULL' and {field} is null
@@ -60,13 +68,19 @@ def process_plane_field(field, array_coll_instr_planes, num_coll_instr_planes, s
         order by collection, instrument_name"""
     execute_query(query,field, filename)
     calculate_percentages(filename, array_coll_instr_planes)
-#    calculate_summary(field, filename, num_coll_instr_planes, sum_instances_coll_instr_planes)
 
+## Main function to execute the script.
+## It initializes the data structures for pre-generated collection/instrument
+## counts for observations and planes, and a list of field names to be checked.
+## It then loops through the list of fields and processes them.
+## The script takes two command-line arguments: start field and end field.
+## The script will process all fields between the start and end fields, inclusive.
+## The script will exit with a status code of 0 if successful, or 255 if an error occurs.
 
 if __name__ == "__main__":
-    obs_filename = "collInstrTotalObs.csv"
-    planes_filename = "collInstrTotalPlanes.csv"
-    fields_filename = "fieldNames.csv"
+    obs_filename = "config/collInstrTotalObs.csv"
+    planes_filename = "config/collInstrTotalPlanes.csv"
+    fields_filename = "config/fieldNames.csv"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--start", default="caom2.Observation.accMetaChecksum", help="Start field")
@@ -77,34 +91,30 @@ if __name__ == "__main__":
     end_field = args.end
     started = False
 
-#
-# Initialize the data structures for pre-generated collection/instrument counts for observations.
-#
+## Initialize the data structures for pre-generated collection/instrument counts for observations.
+
     array_coll_instr_obs = pd.read_csv(obs_filename)
     num_coll_instr_obs = len(array_coll_instr_obs)
     print(f"Number of collection/instrument in {obs_filename}: {num_coll_instr_obs}")
     sum_instances_coll_instr_obs = array_coll_instr_obs['num_instances'].sum()
     print(f"Sum of instances of collection/instrument in {obs_filename}: {sum_instances_coll_instr_obs}")
 
-#
-# Initialize the data structures for pre-generated collection/instrument counts for planes.
-#
+## Initialize the data structures for pre-generated collection/instrument counts for planes.
+
     array_coll_instr_planes = pd.read_csv(planes_filename)
     num_coll_instr_planes = len(array_coll_instr_planes)
     print(f"Number of collection/instrument in {planes_filename}: {num_coll_instr_planes}")
     sum_instances_coll_instr_planes = array_coll_instr_planes['num_instances'].sum()
     print(f"Sum of instances of collection/instrument in {planes_filename}: {sum_instances_coll_instr_planes}")
 
-#
-# Initialize lists of fields to be checked for null values.
-#
+## Initialize lists of fields to be checked for null values.
+
     field_names = pd.read_csv(fields_filename)
     num_fields = len(field_names)
     print(f"Number of fields in {fields_filename}: {num_fields}")
 
-#
-# Now loop through the the list of field and process them.
-#
+## Now loop through the the list of field and process them.
+
     print(f"Execute from {start_field} to {end_field}")
     service = Cadc()
 

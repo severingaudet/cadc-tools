@@ -17,7 +17,7 @@ def execute_query(query, filename):
 
 
 def count_collInstrObservations():
-    filename = "collInstrTotalObs.csv"
+    filename = "config/collInstrTotalObs.csv"
     print( f"Querying caom2.Observation and writing results to {filename}")
 
     query = f"""select collection, instrument_name, count(*) as num_instances
@@ -28,7 +28,7 @@ def count_collInstrObservations():
     execute_query(query, filename)
     
 def count_collInstrPlanes():
-    filename = "collInstrTotalPlanes.csv"
+    filename = "config/collInstrTotalPlanes.csv"
     print( f"Querying caom2.Plane and writing results to {filename}")
 
     query = f"""select collection, instrument_name, count(*) as num_instances
@@ -39,7 +39,7 @@ def count_collInstrPlanes():
     execute_query(query, filename)
 
 def count_collectionObservations():
-    filename = "collectionTotalObs.csv"
+    filename = "config/collectionTotalObs.csv"
     print( f"Querying caom2.Observation and writing results to {filename}")
 
     query = f"""select collection, count(*) as num_instances
@@ -50,7 +50,7 @@ def count_collectionObservations():
     execute_query(query, filename)
     
 def count_collectionPlanes():
-    filename = "collectionTotalPlanes.csv"
+    filename = "config/collectionTotalPlanes.csv"
     print( f"Querying caom2.Plane and writing results to {filename}")
 
     query = f"""select collection, count(*) as num_instances
@@ -61,7 +61,7 @@ def count_collectionPlanes():
     execute_query(query, filename)
     
 def list_fields():
-    filename = "fieldNames.csv"
+    filename = "config/fieldNames.csv"
     print( f"Querying caom2 fields and writing results to {filename}")
 
     query = f"""select table_name, column_name
