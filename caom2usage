@@ -18,25 +18,25 @@ fi
 
 # Check if the script name is provided
 if [ -z "$1" ]; then
-    echo "Usage: $0 <script_name> [script_args]"
-    echo "Example: $0 usageGenCollInstr.py [script_args]"
-    echo "Example: $0 usageGenCollection.py [script_args]"
-    echo "Example: $0 usagePrep.py"
-    echo "Example: $0 usageSumCollInstr.py"
-    echo "Example: $0 usageSumCollection.py"
+    echo "Usage: $1 <script_name> [script_args]"
+    echo "Example: $1 usageGenCollInstr [script_args]"
+    echo "Example: $1 usageGenCollection [script_args]"
+    echo "Example: $1 usagePrep"
+    echo "Example: $1 usageSumCollInstr"
+    echo "Example: $1 usageSumCollection"
     exit 1
 fi 
 
 # Check if the script exists
-if [ ! -f "$script_dir/$1" ]; then
-    echo "Script $1 not found!"
+if [ ! -f "$script_dir/$1.py" ]; then
+    echo "Script $1.py not found!"
     exit 1
 fi     
 
 cd $working_dir
-python3 $script_dir/$1 $2 $3 $4 $5 $6 $7 $8 $9
+python3 $script_dir/$1.py $2 $3 $4 $5 $6 $7 $8 $9
 # Check if the script ran successfully
 if [ $? -ne 0 ]; then
-    echo "Script $1 failed!"
+    echo "Script $1.py failed!"
     exit 1
 fi  
