@@ -8,6 +8,17 @@ import os.path
 #
 
 if __name__ == "__main__":
+
+    ## Determine where the caom2usage directory is located and change to that directory.
+
+    if os.path.isdir("/Users/gaudet_1/work/caom2usage"):
+        os.chdir("/Users/gaudet_1/work/caom2usage")
+    elif os.path.isdir("/arc/projects/CADC/caom2usage"):
+        os.chdir("/arc/projects/CADC/caom2usage")
+    else:
+        print("Unable to determine the location of the caom2usage directory.")
+        exit(1)
+
     obs_filename = "config/collectionTotalObs.csv"
     planes_filename = "config/collectionTotalPlanes.csv"
     fields_filename = "config/fieldNames.csv"

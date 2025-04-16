@@ -6,7 +6,18 @@ import os.path
 
 if __name__ == "__main__":
 
+## Determine where the caom2usage directory is located and change to that directory.
+
+    if os.path.isdir("/Users/gaudet_1/work/caom2usage"):
+        os.chdir("/Users/gaudet_1/work/caom2usage")
+    elif os.path.isdir("/arc/projects/adass2022/caom2usage"):
+        os.chdir("/arc/projects/adass2022/caom2usage")
+    else:
+        print("Unable to determine the location of the caom2usage directory.")
+        exit(1)
+
 ## Initialize the data structure for pre-generated collection counts for observations.
+
     obs_filename = "config/collInstrTotalObs.csv"
     array_collection_obs = pd.read_csv(obs_filename)
 

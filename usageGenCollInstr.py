@@ -3,6 +3,7 @@
 
 from astroquery.cadc import Cadc
 import argparse
+import os.path
 import pandas as pd
 
 ## Execute a query against the CAOM2 database and save the results to a CSV file.
@@ -78,6 +79,17 @@ def process_plane_field(field, array_coll_instr_planes, num_coll_instr_planes, s
 ## The script will exit with a status code of 0 if successful, or 255 if an error occurs.
 
 if __name__ == "__main__":
+
+    ## Determine where the caom2usage directory is located and change to that directory.
+
+    if os.path.isdir("/Users/gaudet_1/work/caom2usage"):
+        os.chdir("/Users/gaudet_1/work/caom2usage")
+    elif os.path.isdir("/arc/projects/CADC/caom2usage"):
+        os.chdir("/arc/projects/CADC/caom2usage")
+    else:
+        print("Unable to determine the location of the caom2usage directory.")
+        exit(1)
+
     obs_filename = "config/collInstrTotalObs.csv"
     planes_filename = "config/collInstrTotalPlanes.csv"
     fields_filename = "config/fieldNames.csv"
@@ -91,7 +103,7 @@ if __name__ == "__main__":
     end_field = args.end
     started = False
 
-## Initialize the data structures for pre-generated collection/instrument counts for observations.
+    ## Initialize the data structures for pre-generated collection/instrument counts for observations.
 
     array_coll_instr_obs = pd.read_csv(obs_filename)
     num_coll_instr_obs = len(array_coll_instr_obs)
@@ -99,7 +111,7 @@ if __name__ == "__main__":
     sum_instances_coll_instr_obs = array_coll_instr_obs['num_instances'].sum()
     print(f"Sum of instances of collection/instrument in {obs_filename}: {sum_instances_coll_instr_obs}")
 
-## Initialize the data structures for pre-generated collection/instrument counts for planes.
+    ## Initialize the data structures for pre-generated collection/instrument counts for planes.
 
     array_coll_instr_planes = pd.read_csv(planes_filename)
     num_coll_instr_planes = len(array_coll_instr_planes)
@@ -107,13 +119,13 @@ if __name__ == "__main__":
     sum_instances_coll_instr_planes = array_coll_instr_planes['num_instances'].sum()
     print(f"Sum of instances of collection/instrument in {planes_filename}: {sum_instances_coll_instr_planes}")
 
-## Initialize lists of fields to be checked for null values.
+    ## Initialize lists of fields to be checked for null values.
 
     field_names = pd.read_csv(fields_filename)
     num_fields = len(field_names)
     print(f"Number of fields in {fields_filename}: {num_fields}")
 
-## Now loop through the the list of field and process them.
+    ## Now loop through the the list of field and process them.
 
     print(f"Execute from {start_field} to {end_field}")
     service = Cadc()

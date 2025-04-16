@@ -1,6 +1,6 @@
 from astroquery.cadc import Cadc
-import datetime
-import pandas as pd
+import os.path
+import pandas
 
 def execute_query(query, filename):
     job = service.create_async(query)
@@ -81,6 +81,17 @@ def list_fields():
     
 
 if __name__ == "__main__":
+
+    ## Determine where the caom2usage directory is located and change to that directory.
+
+    if os.path.isdir("/Users/gaudet_1/work/caom2usage"):
+        os.chdir("/Users/gaudet_1/work/caom2usage")
+    elif os.path.isdir("/arc/projects/CADC/caom2usage"):
+        os.chdir("/arc/projects/CADC/caom2usage")
+    else:
+        print("Unable to determine the location of the caom2usage directory.")
+        exit(1)
+
     service = Cadc()
     
     list_fields()
