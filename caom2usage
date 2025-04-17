@@ -1,16 +1,20 @@
 #!/bin/bash
 # This script is used to run one of the caom2 usage python scripts.
 
-working_dir=$HOME/work/caom2usage
-script_dir=$HOME/work/git/cadc-tools
+# Identify the working directory and script directory
 
-# check if the caom2usage directory exists
-if [ ! -d "$working_dir" ]; then
-    echo "Directory $working_dir does not exist!"
+if [ -d $HOME/work/caom2usage ]; then
+    working_dir=$HOME/work/caom2usage
+elif [ -d /arc/projects/CADC/caom2usage ]; then
+    working_dir=/arc/projects/CADC/caom2usage
+else
+    echo "Neither $HOME/work/caom2usage nor /arc/projects/CADC/caom2usage exist!"
     exit 1
 fi
 
 # check if the git/cadc-tools directory exists
+
+script_dir=$HOME/work/git/cadc-tools
 if [ ! -d "$script_dir" ]; then
     echo "Directory $script_dir does not exist!"
     exit 1
