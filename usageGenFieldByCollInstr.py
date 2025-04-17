@@ -37,7 +37,7 @@ if __name__ == "__main__":
         collInstr_filename = f"fieldByCollInstr/{collection}.{instrument_for_filename}.csv"
 
         with open(collInstr_filename, 'w') as f:
-           f.write("Field, num_null, num_instances,percentage_null\n")
+           f.write("Field,num_null,num_instances,percentage_null\n")
 
         ## loop through all the fields
 
