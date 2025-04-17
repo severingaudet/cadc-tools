@@ -10,8 +10,8 @@ if __name__ == "__main__":
 
     if os.path.isdir("/Users/gaudet_1/work/caom2usage"):
         os.chdir("/Users/gaudet_1/work/caom2usage")
-    elif os.path.isdir("/arc/projects/adass2022/caom2usage"):
-        os.chdir("/arc/projects/adass2022/caom2usage")
+    elif os.path.isdir("/arc/projects/CADC/caom2usage"):
+        os.chdir("/arc/projects/CADC/caom2usage")
     else:
         print("Unable to determine the location of the caom2usage directory.")
         exit(1)
