@@ -46,7 +46,7 @@ if __name__ == "__main__":
     # Initialize the summary output filew with the CSV header.
     #
     with open(summary_filename, 'w') as f:
-        f.write("Collection,Table,number of fields,fields with null values,percentage of fields with null values,number of instances,instances with null values,percentage of instances with null values\n")
+        f.write("Table,Collection,number of fields,fields with null values,percentage of fields with null values,number of instances,instances with null values,percentage of instances with null values\n")
 
     #
     # Initialize lists of fields to be checked for output.
@@ -81,7 +81,7 @@ if __name__ == "__main__":
             #print(f"Number of obs instances with null for {collection}: {num_collection_obs_instances_with_null}")
             percentage_obs_instances_with_null = num_collection_obs_instances_with_null * 100 / num_collection_obs_instances
             with open(summary_filename, 'a') as f:
-                f.write(f"{collection},caom2.Observation,{num_obs_fields},{num_collection_obs_fields_with_null},{percentage_obs_fields_with_null:.2f},{num_collection_obs_instances},{num_collection_obs_instances_with_null},{percentage_obs_instances_with_null:.2f}\n")    
+                f.write(f"caom2.Observation,{collection},{num_obs_fields},{num_collection_obs_fields_with_null},{percentage_obs_fields_with_null:.2f},{num_collection_obs_instances},{num_collection_obs_instances_with_null},{percentage_obs_instances_with_null:.2f}\n")    
 
             ## Process Plane fields
 
@@ -99,4 +99,4 @@ if __name__ == "__main__":
                 #print(f"Number of plane instances with null for {collection}: {num_collection_plane_instances_with_null}")
                 percentage_plane_instances_with_null = num_collection_plane_instances_with_null * 100 / num_collection_plane_instances
                 with open(summary_filename, 'a') as f:
-                    f.write(f"{collection},caom2.Plane,{num_plane_fields},{num_collection_plane_fields_with_null},{percentage_plane_fields_with_null:.2f},{num_collection_plane_instances},{num_collection_plane_instances_with_null},{percentage_plane_instances_with_null:.2f}\n")    
+                    f.write(f"caom2.Plane,{collection},{num_plane_fields},{num_collection_plane_fields_with_null},{percentage_plane_fields_with_null:.2f},{num_collection_plane_instances},{num_collection_plane_instances_with_null},{percentage_plane_instances_with_null:.2f}\n")    
