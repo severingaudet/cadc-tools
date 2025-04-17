@@ -46,7 +46,7 @@ if __name__ == "__main__":
     # Initialize the summary output filew with the CSV header.
     #
     with open(summary_filename, 'w') as f:
-        f.write("Collection,Instrument,Table,number of fields,fields with null values,percentage of fields with null values,number of instances,instances with null values,percentage of instances with null values\n")
+        f.write("Table,Collection,Instrument,number of fields,fields with null values,percentage of fields with null values,number of instances,instances with null values,percentage of instances with null values\n")
 
     #
     # Initialize lists of fields to be checked for output.
