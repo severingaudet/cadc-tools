@@ -25,7 +25,7 @@ def query_site(namespace, namespace_filename_root, namespace_datestamp, site):
         print(f"Error creating service for site {site_name} at {site_url}: {e}")
         exit(1)
 
-    site_query = f"select '{namespace}' as namespace, '{namespace_datestamp}' as datastamp, count(*) as {site_name}_count, '' as {site_name}_duration from inventory.Artifact where uri like '{namespace}/%'"
+    site_query = f"select '{namespace}' as namespace, '{namespace_datestamp}' as datestamp, count(*) as {site_name}_count, '' as {site_name}_duration from inventory.Artifact where uri like '{namespace}/%'"
     site_filename = f"{namespace_filename_root}_{site_name}.csv"
     print(f"Querying site {site_name} for namespace {namespace}")
 
@@ -79,6 +79,7 @@ def query_namespace(namespace):
             continue
 
     print(f"All queries for namespace {namespace} completed.")
+
 
 ## Main function to execute the script.
 ## It initializes the data structures by reading from pre-generated namespaces and sites files
