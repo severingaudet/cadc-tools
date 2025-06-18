@@ -1,0 +1,43 @@
+#!/bin/bash
+# This script is used to run one of the si*Copies python scripts.
+
+# Identify the working directory and script directory
+
+if [ -d $HOME/work/siMonitoring ]; then
+    working_dir=$HOME/work/siMonitoring
+elif [ -d /arc/projects/CADC/siMonitoring ]; then
+    working_dir=/arc/projects/CADC/siMonitoring
+else
+    echo "Neither $HOME/work/siMonitoring nor /arc/projects/CADC/siMonitoring exist!"
+    exit 1
+fi
+
+# check if the git/cadc-tools directory exists
+
+script_dir=$HOME/work/git/cadc-tools
+if [ ! -d "$script_dir" ]; then
+    echo "Directory $script_dir does not exist!"
+    exit 1
+fi
+
+# Check if the script name is provided
+if [ -z "$1" ]; then
+    echo "Usage: $1 <script_name> [script_args]"
+    echo "Example: $1 siGenCopies [script_args]"
+    echo "Example: $1 siMergeCopies [script_args]"
+    exit 1
+fi 
+
+# Check if the script exists
+if [ ! -f "$script_dir/$1.py" ]; then
+    echo "Script $1.py not found!"
+    exit 1
+fi     
+
+cd $working_dir
+python3 $script_dir/$1.py $2 $3 $4 $5 $6 $7 $8 $9
+# Check if the script ran successfully
+if [ $? -ne 0 ]; then
+    echo "Script $1.py failed!"
+    exit 1
+fi  
