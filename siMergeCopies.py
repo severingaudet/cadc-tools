@@ -59,7 +59,7 @@ if __name__ == "__main__":
         with open(output_filename, 'w') as f:
 
             ## Loop through the sites to create csv header.
-            f.write(f"namespace,datestamp")
+            f.write(f"datestamp,namespace")
             for site in sites['site_name']:
                 f.write(f",{site}_count,{site}_duration")
             f.write("\n")
@@ -68,24 +68,21 @@ if __name__ == "__main__":
             for namespace in namespaces['namespace']:
                 print(f"Merging namespace: {namespace}")
                 f.write(f"{namespace}")
-                datestamp_found = False
+                first_site = True
                 for site in sites['site_name']:
                     filename = f"{directory_name}_{namespace}_{site}.csv"
                     if os.path.exists(filename):
                         df = pd.read_csv(filename)
-                        if not datestamp_found:
+                        if first_site:
                             datestamp = df['datestamp'].iloc[0] if 'datestamp' in df.columns else ''
                             f.write(f",{datestamp}")
-                            datestamp_found = True
+                            first_site = False
                         count = df[f"{site}_count"].iloc[0] if f"{site}_count" in df.columns else ''
                         duration = df[f"{site}_duration"].iloc[0] if f"{site}_duration" in df.columns else ''
-                        f.write(f",{count},{duration}")
+                        f.write(f",{count},{duration:.0f}")
                     else:
                         f.write(",,")
                         print(f"File {filename} does not exist, skipping.")
-                if not datestamp_found:
-                    f.write(",")
-                    datestamp_found = True
                 f.write("\n")
     except Exception as e:
         print(f"Error creating output file {output_filename}: {e}")
