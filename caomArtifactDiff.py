@@ -1,5 +1,5 @@
 from astroquery.cadc import Cadc
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import multiprocessing  
 import pandas as pd
@@ -8,13 +8,15 @@ import os
 
 ## Set up variables
 CERT_FILENAME = f"{Path.home()}/.ssl/cadcproxy.pem"
-TIME_STAMP = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-OUTPUT_DIRECTORY = f"caomArtifactDiff-{TIME_STAMP}"
-OUTPUT_FILENAME_ROOT = f"{OUTPUT_DIRECTORY}/caomArtifactDiff-{TIME_STAMP}"
+OUTPUT_DIRECTORY = f"caomArtifactDiff_reports"
+OUTPUT_FILENAME_ROOT = "caomArtifactDiff"
 SI_URL = "https://ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/luskan"
 MAPPINGS_CONFIG = pd.DataFrame()
 COLLECTIONS_CONFIG = pd.DataFrame()
 SITES_CONFIG = pd.DataFrame()
+TOTAL_CAOM_QUERY_TIME = 0
+TOTAL_SI_QUERY_TIME = 0
+COLLECTION_START_TIME = datetime.now(timezone.utc)
 
 ## Create a TAP service object for the given site.
 ## This function will handle the login and return the service object.
@@ -48,7 +50,9 @@ def execute_query(site_service, site_name, site_query):
     
 ## Query the Storage Inventory service for the specified collection.
 def query_si_service(si_namespace, bucket_size):
+    global TOTAL_SI_QUERY_TIME
 
+    start_time = datetime.now()
     ## Create a TAP service object for the given SI service,
     ## format the query to the inventory.Artifact table and execute it.
     service = get_tap_service(SI_URL)
@@ -60,11 +64,17 @@ def query_si_service(si_namespace, bucket_size):
         """    
     service_query_result = execute_query(service, si_namespace, service_query)
 
+    end_time = datetime.now()
+    duration = end_time - start_time
+    TOTAL_SI_QUERY_TIME += duration.total_seconds()
+
     return service_query_result
 
 ## Query the caom repository service for the specified collection in the specified si_namespace.
 def query_caom_service(collection, si_namespace, bucket_size):
+    global TOTAL_CAOM_QUERY_TIME
 
+    start_time = datetime.now()
     ## First determine which ams_site and ams_url to use for the given collection
     row = COLLECTIONS_CONFIG[COLLECTIONS_CONFIG['collection'] == collection]
     ams_site = row['ams_site'].values[0]
@@ -87,11 +97,17 @@ def query_caom_service(collection, si_namespace, bucket_size):
         order by A.uri
         """
     service_query_result = execute_query(service, ams_site, service_query)
+    end_time = datetime.now()
+    duration = end_time - start_time
+    TOTAL_CAOM_QUERY_TIME += duration.total_seconds()
+
     return service_query_result
 
 ## GIven the results from CAOM and SI, compare them and write the differences to a CSV file.
 
 def compare_results(collection, caom_query_result, si_query_result, filename):
+
+    cmp_start_time = datetime.now()
 
     ## Compare the two DataFrames and identify missing and inconsistent files.
     caom_uris = set(caom_query_result['uri'])
@@ -106,11 +122,25 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
         (inconsistent_files['contentLength_caom'] != inconsistent_files['contentLength_si']) |
         (inconsistent_files['contentType_caom'] != inconsistent_files['contentType_si'])
     ]
+    cmp_end_time = datetime.now()
+    cmp_duration = cmp_end_time - cmp_start_time
 
+    collection_end_time = datetime.now(timezone.utc)
+    collection_duration = collection_end_time - COLLECTION_START_TIME
+    
     ## Write the comparison results to a CSV file.
     try:
         with open(filename, 'w') as f:
             f.write(f"Comparison results for collection {collection}\n")
+            f.write(f"\n")
+            f.write(f"Began on {COLLECTION_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
+            f.write(f"Ended on {collection_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
+            f.write(f"Total collection processing time: {collection_duration.total_seconds():.2f} seconds\n")
+            f.write(f"\n")
+            f.write(f"Total CAOM query time: {TOTAL_CAOM_QUERY_TIME:.2f} seconds\n")
+            f.write(f"Total SI query time: {TOTAL_SI_QUERY_TIME:.2f} seconds\n")
+            f.write(f"Total comparison time: {cmp_duration.total_seconds():.2f} seconds\n")
+            f.write(f"\n")
             f.write(f"Total files in CAOM: {len(caom_query_result)}\n")
             f.write(f"Total files in SI: {len(si_query_result)}\n")
             f.write(f"Number of files missing in SI: {len(missing_in_si)}\n")
@@ -118,21 +148,21 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
             f.write(f"Number of inconsistent files: {len(inconsistent_files)}\n")
     
             if len(missing_in_si) > 0:
-                f.write(f"List of files missing in SI\n")
+                f.write(f"\nList of files missing in SI\n")
                 f.write("category,uri,lastModified_caom\n")
                 for uri in sorted(missing_in_si):
                     last_modified = caom_query_result[caom_query_result['uri'] == uri]['lastModified'].values[0]
                     f.write(f"MISSING_IN_SI,{uri},{last_modified}\n")
 
             if len(missing_in_caom) > 0:
-                f.write(f"List of files missing in CAOM\n")
+                f.write(f"\nList of files missing in CAOM\n")
                 f.write("category,uri,lastModified_si\n")
                 for uri in sorted(missing_in_caom):
                     last_modified = si_query_result[si_query_result['uri'] == uri]['lastModified'].values[0]
                     f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
 
             if len(inconsistent_files) > 0:
-                f.write(f"List of inconsistent files\n")
+                f.write(f"\nList of inconsistent files\n")
                 f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
                 for _, row in inconsistent_files.iterrows():
                     f.write(f"INCONSISTENT,{row['uri']},{row['contentCheckSum_caom']},{row['contentCheckSum_si']},{row['contentLength_caom']},{row['contentLength_si']},{row['contentType_caom']},{row['contentType_si']},{row['lastModified_caom']},{row['lastModified_si']}\n")
@@ -218,6 +248,12 @@ def query_collectionspace_buckets(row):
 ## For each collection/namespace combination, compare the entire list of files in one go.
 
 def compare_collection(collection):
+    global TOTAL_CAOM_QUERY_TIME, TOTAL_SI_QUERY_TIME, COLLECTION_START_TIME
+
+    TOTAL_CAOM_QUERY_TIME = 0
+    TOTAL_SI_QUERY_TIME = 0
+    COLLECTION_START_TIME = datetime.now(timezone.utc)
+
     cmp_filename = f"{OUTPUT_FILENAME_ROOT}"
     caom_query_results = pd.DataFrame()
     si_query_results = pd.DataFrame()
@@ -351,7 +387,7 @@ if __name__ == "__main__":
     try:
         if not os.path.exists(OUTPUT_DIRECTORY):
             os.makedirs(OUTPUT_DIRECTORY)
-            os.chdir(OUTPUT_DIRECTORY)
+        os.chdir(OUTPUT_DIRECTORY)
     except Exception as e:
         print(f"Error creating output directory {OUTPUT_DIRECTORY}: {e}")
         exit(1)
