@@ -143,29 +143,29 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
             f.write(f"\n")
             f.write(f"Total files in CAOM: {len(caom_query_result)}\n")
             f.write(f"Total files in SI: {len(si_query_result)}\n")
-            f.write(f"Number of files missing in SI: {len(missing_in_si)}\n")
-            f.write(f"Number of files missing in CAOM: {len(missing_in_caom)}\n")
+            f.write(f"Number of files in CAOM and not in SI: {len(missing_in_si)}\n")
             f.write(f"Number of inconsistent files: {len(inconsistent_files)}\n")
+            f.write(f"Number of files in SI and not in CAOM: {len(missing_in_caom)}\n")
     
             if len(missing_in_si) > 0:
-                f.write(f"\nList of files missing in SI\n")
+                f.write(f"\nList of files in CAOM and not in SI\n")
                 f.write("category,uri,lastModified_caom\n")
                 for uri in sorted(missing_in_si):
                     last_modified = caom_query_result[caom_query_result['uri'] == uri]['lastModified'].values[0]
                     f.write(f"MISSING_IN_SI,{uri},{last_modified}\n")
-
-            if len(missing_in_caom) > 0:
-                f.write(f"\nList of files missing in CAOM\n")
-                f.write("category,uri,lastModified_si\n")
-                for uri in sorted(missing_in_caom):
-                    last_modified = si_query_result[si_query_result['uri'] == uri]['lastModified'].values[0]
-                    f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
 
             if len(inconsistent_files) > 0:
                 f.write(f"\nList of inconsistent files\n")
                 f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
                 for _, row in inconsistent_files.iterrows():
                     f.write(f"INCONSISTENT,{row['uri']},{row['contentCheckSum_caom']},{row['contentCheckSum_si']},{row['contentLength_caom']},{row['contentLength_si']},{row['contentType_caom']},{row['contentType_si']},{row['lastModified_caom']},{row['lastModified_si']}\n")
+
+            if len(missing_in_caom) > 0:
+                f.write(f"\nList of files in SI and not in CAOM\n")
+                f.write("category,uri,lastModified_si\n")
+                for uri in sorted(missing_in_caom):
+                    last_modified = si_query_result[si_query_result['uri'] == uri]['lastModified'].values[0]
+                    f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
         print(f"Comparison results written to {filename}")
     except Exception as e:
         print(f"Error writing comparison results to {filename}: {e}")
