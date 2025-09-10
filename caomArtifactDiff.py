@@ -109,10 +109,6 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
 
     cmp_start_time = datetime.now()
 
-    ## Explicitly convert the columns to string type to avoid issues with comparisons.
-    caom_query_result = caom_query_result.astype({'uri': 'string', 'contentCheckSum': 'string', 'contentLength': 'string', 'contentType': 'string', 'lastModified': 'string'})
-    si_query_result = si_query_result.astype({'uri': 'string', 'contentCheckSum': 'string', 'contentLength': 'string', 'contentType': 'string', 'lastModified': 'string'})
-
     ## Compare the two DataFrames and identify missing and inconsistent files.
     caom_uris = set(caom_query_result['uri'])
     si_uris = set(si_query_result['uri'])
