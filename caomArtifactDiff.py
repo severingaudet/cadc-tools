@@ -1,8 +1,9 @@
 from astroquery.cadc import Cadc
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
-import multiprocessing  
 import pandas as pd
+#import modin.pandas as pd
+#import multiprocessing  
 import sys
 import os
 
@@ -127,6 +128,9 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
 
     collection_end_time = datetime.now(timezone.utc)
     collection_duration = collection_end_time - COLLECTION_START_TIME
+
+    ## print a summary of the comparison results.
+    print(f"Files in CAOM: {len(caom_query_result)}; files in SI: {len(si_query_result)}; files in CAOM and not in SI: {len(missing_in_si)}; inconsistent files: {len(inconsistent_files)}; files in SI and not in CAOM: {len(missing_in_caom)}")
     
     ## Write the comparison results to a CSV file.
     try:
@@ -153,12 +157,14 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
                 for uri in sorted(missing_in_si):
                     last_modified = caom_query_result[caom_query_result['uri'] == uri]['lastModified'].values[0]
                     f.write(f"MISSING_IN_SI,{uri},{last_modified}\n")
+                del missing_in_si
 
             if len(inconsistent_files) > 0:
                 f.write(f"\nList of inconsistent files\n")
                 f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
                 for _, row in inconsistent_files.iterrows():
                     f.write(f"INCONSISTENT,{row['uri']},{row['contentCheckSum_caom']},{row['contentCheckSum_si']},{row['contentLength_caom']},{row['contentLength_si']},{row['contentType_caom']},{row['contentType_si']},{row['lastModified_caom']},{row['lastModified_si']}\n")
+                del inconsistent_files
 
             if len(missing_in_caom) > 0:
                 f.write(f"\nList of files in SI and not in CAOM\n")
@@ -166,6 +172,8 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
                 for uri in sorted(missing_in_caom):
                     last_modified = si_query_result[si_query_result['uri'] == uri]['lastModified'].values[0]
                     f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
+                del missing_in_caom
+
         print(f"Comparison results written to {filename}")
     except Exception as e:
         print(f"Error writing comparison results to {filename}: {e}")
@@ -212,7 +220,7 @@ def query_collectionspace_buckets(row):
             compare_results(caom_query_result, si_query_result, collection, bucket, collection_datestamp,)
         except Exception as e:
             print(f"Error querying bucket {bucket} for collection {collection}: {e}")
-            continue    
+            continue
     return
 
 ''' 
@@ -258,6 +266,7 @@ def compare_collection(collection):
     caom_query_results = pd.DataFrame()
     si_query_results = pd.DataFrame()
     collection_list = []
+    si_namespace_list = []
     
     ## Determine the multiplicity of collections and/or si_namespaces. Starting with the given collection, how many si_namespaces
     ## is it referencing and in those referenced si_namespaces, how many collections are there?
@@ -265,6 +274,7 @@ def compare_collection(collection):
     mapping_by_collection_rows = MAPPINGS_CONFIG[MAPPINGS_CONFIG['collection'] == collection]
     for index, mapping_by_collection_row in mapping_by_collection_rows.iterrows():
         si_namespace = mapping_by_collection_row['si_namespace']
+        si_namespace_list.append(si_namespace)
         si_namespace_name = si_namespace.replace(':', '-')
         bucket_size = mapping_by_collection_row['num_char']
         if bucket_size != 0:
@@ -280,6 +290,7 @@ def compare_collection(collection):
             try:
                 query_result = query_caom_service(collection, si_namespace, bucket_size)
                 caom_query_results = pd.concat([caom_query_results, query_result], ignore_index=True)
+                del query_result
             except Exception as e:
                 print(f"Error querying CAOM for collection {collection} in site {mapping_by_collection_row['ams_site']}: {e}")
                 return   
@@ -289,13 +300,18 @@ def compare_collection(collection):
         try:
             query_result = query_si_service(si_namespace, bucket_size)
             si_query_results = pd.concat([si_query_results, query_result], ignore_index=True)
+            del query_result
         except Exception as e:
             print(f"Error querying SI for collection {collection} in namespace {mapping_by_collection_row['si_namespace']}: {e}")
             return
 
     cmp_filename = f"{cmp_filename}_diff.csv"
+    print(f"Comparing SI namespace(s) {si_namespace_list} and collection(s) {collection_list}.")  
     compare_results(collection, caom_query_results, si_query_results, cmp_filename)
     
+    del caom_query_results
+    del si_query_results
+
     return
  
  
