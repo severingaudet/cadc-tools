@@ -168,10 +168,10 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
                     f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
                 del missing_in_caom
 
-        write_end_time = datetime.now()
-        write_duration = write_end_time - write_start_time
-        f.write(f"\nTime to write comparison results: {write_duration.total_seconds():.2f} seconds\n")
-        print(f"Comparison results written to {filename} in {write_duration.total_seconds():.2f} seconds.")
+            write_end_time = datetime.now()
+            write_duration = write_end_time - write_start_time
+            print(f"Comparison results written to {filename} in {write_duration.total_seconds():.2f} seconds.")
+            f.write(f"\nTime to write comparison results: {write_duration.total_seconds():.2f} seconds\n")
     except Exception as e:
         print(f"Error writing comparison results to {filename}: {e}")
         exit(1)
