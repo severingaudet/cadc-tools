@@ -141,37 +141,49 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
             f.flush()
     
             if len(missing_in_si) > 0:
-                print(f"Writing list of files in CAOM and not in SI to {filename}.")
+                write_start_time = datetime.now()
+                print(f"Writing list of {len(missing_in_si)} files in CAOM and not in SI.")
                 f.write(f"\nList of files in CAOM and not in SI\n")
                 f.write("category,uri,lastModified_caom\n")
                 for uri in missing_in_si:
                     last_modified = caom_query_result.filter(pl.col('uri') == uri)['lastModified'][0]
                     f.write(f"MISSING_IN_SI,{uri},{last_modified}\n")
+                write_end_time = datetime.now()
+                write_duration = write_end_time - write_start_time
+                print(f"Time to write list of {len(missing_in_si)} files in CAOM and not in SI {write_duration.total_seconds():.2f} seconds.")
+                f.write(f"Time to write list of {len(missing_in_si)} files in CAOM and not in SI {write_duration.total_seconds():.2f} seconds.\n")
                 f.flush()
                 del missing_in_si
 
             if len(inconsistent_files) > 0:
-                print(f"Writing list of inconsistent files to {filename}.")
+                write_start_time = datetime.now()
+                print(f"Writing list of {len(inconsistent_files)} inconsistent files.")
                 f.write(f"\nList of inconsistent files\n")
                 f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
                 for row in inconsistent_files.iter_rows(named=True):
                     f.write(f"INCONSISTENT,{row['uri']},{row['contentCheckSum']},{row['contentCheckSum_si']},{row['contentLength']},{row['contentLength_si']},{row['contentType']},{row['contentType_si']},{row['lastModified']},{row['lastModified_si']}\n")
+                write_end_time = datetime.now()
+                write_duration = write_end_time - write_start_time
+                print(f"Time to write list of {len(inconsistent_files)} files {write_duration.total_seconds():.2f} seconds.")
+                f.write(f"Time to write list of {len(inconsistent_files)} files {write_duration.total_seconds():.2f} seconds.\n")
                 f.flush()
                 del inconsistent_files
 
             if len(missing_in_caom) > 0:
-                print(f"Writing list of files in SI and not in CAOM to {filename}.")
+                write_start_time = datetime.now()
+                print(f"Writing list of {len(missing_in_caom)} files in SI and not in CAOM.")
                 f.write(f"\nList of files in SI and not in CAOM\n")
                 f.write("category,uri,lastModified_si\n")
                 for uri in missing_in_caom:
                     last_modified = si_query_result.filter(pl.col('uri') == uri)['lastModified'][0]
                     f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
+                write_end_time = datetime.now()
+                write_duration = write_end_time - write_start_time
+                print(f"Time to write list of {len(missing_in_caom)} files in SI and not in CAOM {write_duration.total_seconds():.2f} seconds.")
+                f.write(f"Time to write list of {len(missing_in_caom)} files in SI and not in CAOM {write_duration.total_seconds():.2f} seconds.\n")
+                f.flush()
                 del missing_in_caom
 
-            write_end_time = datetime.now()
-            write_duration = write_end_time - write_start_time
-            print(f"Comparison results written to {filename} in {write_duration.total_seconds():.2f} seconds.")
-            f.write(f"\nTime to write comparison results: {write_duration.total_seconds():.2f} seconds\n")
     except Exception as e:
         print(f"Error writing comparison results to {filename}: {e}")
         exit(1)
