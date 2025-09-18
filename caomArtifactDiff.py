@@ -26,8 +26,8 @@ def execute_query(site_url, site_name, site_query):
     data_list = {"LANG": "ADQL", "RESPONSEFORMAT": "CSV", "QUERY": site_query}
 
     try:
-        # Make the POST request
-        with requests.post(site_url_sync, data=data_list, allow_redirects=True, cert=CERT_FILENAME, stream=True) as response:
+        # Make the POST request with a streaming response and a 1 hour timeout
+        with requests.post(site_url_sync, data=data_list, allow_redirects=True, cert=CERT_FILENAME, stream=True, timeout=3600) as response:
             response.raise_for_status()  # Raise an error for bad status codes
             # Read the raw CSV response into a Polars DataFrame
             query_result = pl.read_csv(response.raw)
