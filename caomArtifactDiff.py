@@ -33,9 +33,9 @@ def execute_query(site_url, site_name, site_query):
             query_result = pl.read_csv(response.raw)
         return query_result
     except requests.exceptions.HTTPError as e:
-        print(f"HTTP Error: {e}")
+        print(f"{datetime.now()} HTTP Error: {e}")
     except requests.exceptions.RequestException as e:
-        print(f"Other Request Error: {e}")
+        print(f"{datetime.now()} Other Request Error: {e}")
 
     exit(1)
 
@@ -44,6 +44,8 @@ def query_si_service(si_namespace):
     global TOTAL_SI_QUERY_TIME
 
     start_time = datetime.now()
+    print(f"Start time: {start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC")
+
     ## Format the query to the inventory.Artifact table and execute it.
     service_query = f"""SELECT uri as uri, contentChecksum as contentCheckSum, contentLength as contentLength, contentType as contentType, contentLastModified as lastModified
         FROM inventory.Artifact AS A
@@ -54,6 +56,7 @@ def query_si_service(si_namespace):
     end_time = datetime.now()
     duration = end_time - start_time
     TOTAL_SI_QUERY_TIME += duration.total_seconds()
+    print(f"End time: {end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC; duration: {duration.total_seconds():.2f} seconds")
 
     return service_query_result
 
@@ -62,6 +65,8 @@ def query_caom_service(collection, si_namespace):
     global TOTAL_CAOM_QUERY_TIME
 
     start_time = datetime.now()
+    print(f"Start time: {start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC")
+
     ## First determine which ams_site and ams_url to use for the given collection
     row = COLLECTIONS_CONFIG.filter(pl.col('collection') == collection)
     ams_site = row['ams_site'][0]
@@ -83,6 +88,7 @@ def query_caom_service(collection, si_namespace):
     end_time = datetime.now()
     duration = end_time - start_time
     TOTAL_CAOM_QUERY_TIME += duration.total_seconds()
+    print(f"End time: {end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC; duration: {duration.total_seconds():.2f} seconds")
 
     return service_query_result
 
@@ -220,7 +226,7 @@ def compare_collection(collection):
             collection_to_query = mapping_by_namespace_row['collection']
             cmp_filename = f"{cmp_filename}_{collection_to_query}"
             collection_list.append(collection_to_query)
-            print(f"Querying CAOM with collection {collection_to_query} and SI with namespace {si_namespace}.")
+            print(f"Querying CAOM for collection {collection_to_query} with artifacts like {si_namespace}/%.")
             try:
                 query_result = query_caom_service(collection, si_namespace)
                 caom_query_results = pl.concat([caom_query_results, query_result])
