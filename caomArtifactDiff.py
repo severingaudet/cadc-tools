@@ -18,7 +18,7 @@ TOTAL_SI_QUERY_TIME = 0
 COLLECTION_START_TIME = datetime.now(timezone.utc)
 
 ## Execute the query as a sync call to the site URL, requesting CSV output as this is the most efficient
-# way to get the query output which is then converted to a POLARS dataframe.
+## way to get the query output which is then converted to a POLARS dataframe.
 
 def execute_query(site_url, site_name, site_query):
     
@@ -26,8 +26,8 @@ def execute_query(site_url, site_name, site_query):
     data_list = {"LANG": "ADQL", "RESPONSEFORMAT": "CSV", "QUERY": site_query}
 
     try:
-        # Make the POST request with a streaming response and a 1 hour timeout
-        with requests.post(site_url_sync, data=data_list, allow_redirects=True, cert=CERT_FILENAME, stream=True, timeout=3600) as response:
+        # Make the POST request with a streaming response and a 2 hour timeout
+        with requests.post(site_url_sync, data=data_list, allow_redirects=True, cert=CERT_FILENAME, stream=True, timeout=7200) as response:
             response.raise_for_status()  # Raise an error for bad status codes
             # Read the raw CSV response into a Polars DataFrame
             query_result = pl.read_csv(response.raw)
@@ -249,7 +249,7 @@ def read_configurations():
     global MAPPINGS_CONFIG, COLLECTIONS_CONFIG, SITES_CONFIG
 
     ## Read static configuration files for mapping collections to SI namespaces.
-    ## This file must contain the columns collection, si_namespace, num_char.
+    ## This file must contain the columns collection, si_namespace.
     try:
         MAPPINGS_CONFIG = pl.read_csv("config/caomSiMappings.csv")
     except FileNotFoundError as e:
