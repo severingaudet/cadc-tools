@@ -33,9 +33,9 @@ def execute_query(site_url, site_name, site_query):
             query_result = pl.read_csv(response.raw)
         return query_result
     except requests.exceptions.HTTPError as e:
-        print(f"{datetime.now()} HTTP Error: {e}")
+        print(f"{datetime.now(timezone.utc)} HTTP Error: {e}")
     except requests.exceptions.RequestException as e:
-        print(f"{datetime.now()} Other Request Error: {e}")
+        print(f"{datetime.now(timezone.utc)} Other Request Error: {e}")
 
     exit(1)
 
@@ -43,7 +43,7 @@ def execute_query(site_url, site_name, site_query):
 def query_si_service(si_namespace):
     global TOTAL_SI_QUERY_TIME
 
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
     print(f"Start time: {start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC")
 
     ## Format the query to the inventory.Artifact table and execute it.
@@ -53,7 +53,7 @@ def query_si_service(si_namespace):
         order by uri"""    
     service_query_result = execute_query(SI_URL, si_namespace, service_query)
 
-    end_time = datetime.now()
+    end_time = datetime.now(timezone.utc)
     duration = end_time - start_time
     TOTAL_SI_QUERY_TIME += duration.total_seconds()
     print(f"End time: {end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC; duration: {duration.total_seconds():.2f} seconds")
@@ -64,7 +64,7 @@ def query_si_service(si_namespace):
 def query_caom_service(collection, si_namespace):
     global TOTAL_CAOM_QUERY_TIME
 
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
     print(f"Start time: {start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC")
 
     ## First determine which ams_site and ams_url to use for the given collection
@@ -85,7 +85,7 @@ def query_caom_service(collection, si_namespace):
         and A.uri LIKE '{si_namespace}/%'
         order by A.uri"""
     service_query_result = execute_query(ams_url, ams_site, service_query)
-    end_time = datetime.now()
+    end_time = datetime.now(timezone.utc)
     duration = end_time - start_time
     TOTAL_CAOM_QUERY_TIME += duration.total_seconds()
     print(f"End time: {end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC; duration: {duration.total_seconds():.2f} seconds")
@@ -96,19 +96,26 @@ def query_caom_service(collection, si_namespace):
 
 def compare_results(collection, caom_query_result, si_query_result, filename):
 
-    cmp_start_time = datetime.now()
+    cmp_start_time = datetime.now(timezone.utc)
 
-    ## Compare the two DataFrames and identify missing and inconsistent files.
-    caom_uris = set(caom_query_result['uri'].to_list())
-    si_uris = set(si_query_result['uri'].to_list())
+    ## create a new dataframe that contains the uri and lastModified columns of rows of uri's that are in CAOM but not in SI.
+    missing_in_si = pl.DataFrame()
+    missing_in_si = caom_query_result.join(
+        si_query_result, on='uri', how='anti'
+    ).select(
+        pl.col('uri'), pl.col('lastModified')
+    ).sort('uri')
 
-    missing_in_si = caom_uris - si_uris
-    if len(missing_in_si) > 0:
-        missing_in_si = sorted(missing_in_si)
-    missing_in_caom = si_uris - caom_uris
-    if len(missing_in_caom) > 0:
-        missing_in_caom = sorted(missing_in_caom)
+    ## create a new dataframe that contains the uri and lastModified columns of rows of uri's that are in SI but not in CAOM.
+    missing_in_caom = pl.DataFrame()
+    missing_in_caom = si_query_result.join(
+        caom_query_result, on='uri', how='anti'
+    ).select(
+        pl.col('uri'), pl.col('lastModified')
+    ).sort('uri')
 
+    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentCheckSum, contentLength or contentType values.
+    inconsistent_files = pl.DataFrame()
     inconsistent_files = caom_query_result.join(
         si_query_result, on='uri', suffix='_si'
     ).filter(
@@ -116,7 +123,7 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
         (pl.col('contentLength') != pl.col('contentLength_si')) |
         (pl.col('contentType') != pl.col('contentType_si'))
     )
-    cmp_end_time = datetime.now()
+    cmp_end_time = datetime.now(timezone.utc)
     cmp_duration = cmp_end_time - cmp_start_time
 
     collection_end_time = datetime.now(timezone.utc)
@@ -126,7 +133,7 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
     print(f"Files in CAOM: {len(caom_query_result)}; files in SI: {len(si_query_result)}; files in CAOM and not in SI: {len(missing_in_si)}; inconsistent files: {len(inconsistent_files)}; files in SI and not in CAOM: {len(missing_in_caom)}")
     
     ## Write the comparison results to a CSV file.
-    write_start_time = datetime.now()
+    write_start_time = datetime.now(timezone.utc)
     try:
         with open(filename, 'w') as f:
             f.write(f"Comparison results for collection {collection}\n")
@@ -147,46 +154,50 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
             f.flush()
     
             if len(missing_in_si) > 0:
-                write_start_time = datetime.now()
-                print(f"Writing list of {len(missing_in_si)} files in CAOM and not in SI.")
-                f.write(f"\nList of files in CAOM and not in SI\n")
+                write_start_time = datetime.now(timezone.utc)
+                print(f"List of {len(missing_in_si)} files in CAOM and not in SI: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.")
+                f.write(f"\nList of {len(missing_in_si)} files in CAOM and not in SI: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.\n")
                 f.write("category,uri,lastModified_caom\n")
-                for uri in missing_in_si:
-                    last_modified = caom_query_result.filter(pl.col('uri') == uri)['lastModified'][0]
-                    f.write(f"MISSING_IN_SI,{uri},{last_modified}\n")
-                write_end_time = datetime.now()
+#                for uri in missing_in_si:
+#                    last_modified = caom_query_result.filter(pl.col('uri') == uri)['lastModified'][0]
+#                    f.write(f"MISSING_IN_SI,{uri},{last_modified}\n")
+                for row in missing_in_si.iter_rows(named=True):
+                    f.write(f"MISSING_IN_SI,{row['uri']},{row['lastModified']}\n")
+                write_end_time = datetime.now(timezone.utc)
                 write_duration = write_end_time - write_start_time
-                print(f"Time to write list of {len(missing_in_si)} files in CAOM and not in SI {write_duration.total_seconds():.2f} seconds.")
-                f.write(f"Time to write list of {len(missing_in_si)} files in CAOM and not in SI {write_duration.total_seconds():.2f} seconds.\n")
+                print(f"List of {len(missing_in_si)} files in CAOM and not in SI: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.")
+                f.write(f"List of {len(missing_in_si)} files in CAOM and not in SI: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.\n")
                 f.flush()
                 del missing_in_si
 
             if len(inconsistent_files) > 0:
-                write_start_time = datetime.now()
-                print(f"Writing list of {len(inconsistent_files)} inconsistent files.")
-                f.write(f"\nList of inconsistent files\n")
+                write_start_time = datetime.now(timezone.utc)
+                print(f"List of {len(inconsistent_files)} inconsistent files: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.")
+                f.write(f"\nList of {len(inconsistent_files)} inconsistent files: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.\n")
                 f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
                 for row in inconsistent_files.iter_rows(named=True):
                     f.write(f"INCONSISTENT,{row['uri']},{row['contentCheckSum']},{row['contentCheckSum_si']},{row['contentLength']},{row['contentLength_si']},{row['contentType']},{row['contentType_si']},{row['lastModified']},{row['lastModified_si']}\n")
-                write_end_time = datetime.now()
+                write_end_time = datetime.now(timezone.utc)
                 write_duration = write_end_time - write_start_time
-                print(f"Time to write list of {len(inconsistent_files)} files {write_duration.total_seconds():.2f} seconds.")
-                f.write(f"Time to write list of {len(inconsistent_files)} files {write_duration.total_seconds():.2f} seconds.\n")
+                print(f"List of {len(inconsistent_files)} inconsistent files: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.")
+                f.write(f"List of {len(inconsistent_files)} inconsistent files: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.\n")
                 f.flush()
                 del inconsistent_files
 
             if len(missing_in_caom) > 0:
-                write_start_time = datetime.now()
-                print(f"Writing list of {len(missing_in_caom)} files in SI and not in CAOM.")
-                f.write(f"\nList of files in SI and not in CAOM\n")
+                write_start_time = datetime.now(timezone.utc)
+                print(f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.")
+                f.write(f"\nList of {len(missing_in_caom)} files in SI and not in CAOM: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.\n")
                 f.write("category,uri,lastModified_si\n")
-                for uri in missing_in_caom:
-                    last_modified = si_query_result.filter(pl.col('uri') == uri)['lastModified'][0]
-                    f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
-                write_end_time = datetime.now()
+#                for uri in missing_in_caom:
+#                    last_modified = si_query_result.filter(pl.col('uri') == uri)['lastModified'][0]
+#                    f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
+                for row in missing_in_caom.iter_rows(named=True):
+                    f.write(f"MISSING_IN_CAOM,{row['uri']},{row['lastModified']}\n")
+                write_end_time = datetime.now(timezone.utc)
                 write_duration = write_end_time - write_start_time
-                print(f"Time to write list of {len(missing_in_caom)} files in SI and not in CAOM {write_duration.total_seconds():.2f} seconds.")
-                f.write(f"Time to write list of {len(missing_in_caom)} files in SI and not in CAOM {write_duration.total_seconds():.2f} seconds.\n")
+                print(f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.")
+                f.write(f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.\n")
                 f.flush()
                 del missing_in_caom
 
