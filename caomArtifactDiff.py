@@ -98,23 +98,26 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
 
     cmp_start_time = datetime.now(timezone.utc)
 
-    ## create a new dataframe that contains the uri and lastModified columns of rows of uri's that are in CAOM but not in SI.
+    ## create a new dataframe that contains the unique uri's and the first lastModified value of rows of uri's that are in CAOM but not in SI.
+
     missing_in_si = pl.DataFrame()
     missing_in_si = caom_query_result.join(
         si_query_result, on='uri', how='anti'
     ).select(
         pl.col('uri'), pl.col('lastModified')
     ).sort('uri')
+    missing_in_si = missing_in_si.unique(subset=['uri'], keep='first')
 
-    ## create a new dataframe that contains the uri and lastModified columns of rows of uri's that are in SI but not in CAOM.
+    ## create a new dataframe that contains the unique uri's and first lastModified columns of rows of uri's that are in SI but not in CAOM.
     missing_in_caom = pl.DataFrame()
     missing_in_caom = si_query_result.join(
         caom_query_result, on='uri', how='anti'
     ).select(
         pl.col('uri'), pl.col('lastModified')
     ).sort('uri')
+    missing_in_caom = missing_in_caom.unique(subset=['uri'], keep='first')
 
-    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentCheckSum, contentLength or contentType values.
+    ## create a new dataframe that contains the rows of unique uri's that are in both CAOM and SI but have different contentCheckSum, contentLength or contentType values.
     inconsistent_files = pl.DataFrame()
     inconsistent_files = caom_query_result.join(
         si_query_result, on='uri', suffix='_si'
@@ -122,7 +125,10 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
         (pl.col('contentCheckSum') != pl.col('contentCheckSum_si')) |
         (pl.col('contentLength') != pl.col('contentLength_si')) |
         (pl.col('contentType') != pl.col('contentType_si'))
-    )
+    ).sort(uri)
+    inconsistent_files = inconsistent_files.unique(subset=['uri'], keep='first')
+
+
     cmp_end_time = datetime.now(timezone.utc)
     cmp_duration = cmp_end_time - cmp_start_time
 
@@ -138,66 +144,66 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
         with open(filename, 'w') as f:
             f.write(f"Comparison results for collection {collection}\n")
             f.write(f"\n")
-            f.write(f"Began on {COLLECTION_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
-            f.write(f"Ended on {collection_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
+            f.write(f"Processing began on {COLLECTION_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
+            f.write(f"Processing ended on {collection_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
             f.write(f"Total collection processing time: {collection_duration.total_seconds():.2f} seconds\n")
             f.write(f"\n")
             f.write(f"Total CAOM query time: {TOTAL_CAOM_QUERY_TIME:.2f} seconds\n")
             f.write(f"Total SI query time: {TOTAL_SI_QUERY_TIME:.2f} seconds\n")
             f.write(f"Total comparison time: {cmp_duration.total_seconds():.2f} seconds\n")
             f.write(f"\n")
-            f.write(f"Total files in CAOM: {caom_query_result.height}\n")
-            f.write(f"Total files in SI: {si_query_result.height}\n")
-            f.write(f"Number of files in CAOM and not in SI: {len(missing_in_si)}\n")
-            f.write(f"Number of inconsistent files: {inconsistent_files.height}\n")
-            f.write(f"Number of files in SI and not in CAOM: {len(missing_in_caom)}\n")
+            f.write(f"Files and dataframe size in CAOM: {caom_query_result.height} rows, {caom_query_result.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size in SI: {si_query_result.height} rows, {si_query_result.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size for in CAOM and not in SI: {missing_in_si.height} rows, {missing_in_si.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size for inconsistent files: {inconsistent_files.height} rows, {inconsistent_files.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size for in SI and not in ßCAOM: {missing_in_caom.height} rows, {missing_in_caom.estimated_size()} bytes\n")
             f.flush()
     
             if len(missing_in_si) > 0:
                 write_start_time = datetime.now(timezone.utc)
-                print(f"List of {len(missing_in_si)} files in CAOM and not in SI: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.")
-                f.write(f"\nList of {len(missing_in_si)} files in CAOM and not in SI: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.\n")
+                message = f"List of {len(missing_in_si)} files in CAOM and not in SI: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC."
+                print(message)
+                f.write(f"\n{message}\n")
                 f.write("category,uri,lastModified_caom\n")
-#                for uri in missing_in_si:
-#                    last_modified = caom_query_result.filter(pl.col('uri') == uri)['lastModified'][0]
-#                    f.write(f"MISSING_IN_SI,{uri},{last_modified}\n")
                 for row in missing_in_si.iter_rows(named=True):
                     f.write(f"MISSING_IN_SI,{row['uri']},{row['lastModified']}\n")
                 write_end_time = datetime.now(timezone.utc)
                 write_duration = write_end_time - write_start_time
-                print(f"List of {len(missing_in_si)} files in CAOM and not in SI: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.")
-                f.write(f"List of {len(missing_in_si)} files in CAOM and not in SI: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.\n")
+                message = f"List of {len(missing_in_si)} files in CAOM and not in SI: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds."
+                print(message)
+                f.write(f"{message}\n")
                 f.flush()
                 del missing_in_si
 
             if len(inconsistent_files) > 0:
                 write_start_time = datetime.now(timezone.utc)
-                print(f"List of {len(inconsistent_files)} inconsistent files: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.")
-                f.write(f"\nList of {len(inconsistent_files)} inconsistent files: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.\n")
+                message = f"List of {len(inconsistent_files)} inconsistent files: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC."
+                print(message)
+                f.write(f"\n{message}\n")
                 f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
                 for row in inconsistent_files.iter_rows(named=True):
                     f.write(f"INCONSISTENT,{row['uri']},{row['contentCheckSum']},{row['contentCheckSum_si']},{row['contentLength']},{row['contentLength_si']},{row['contentType']},{row['contentType_si']},{row['lastModified']},{row['lastModified_si']}\n")
                 write_end_time = datetime.now(timezone.utc)
                 write_duration = write_end_time - write_start_time
-                print(f"List of {len(inconsistent_files)} inconsistent files: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.")
-                f.write(f"List of {len(inconsistent_files)} inconsistent files: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.\n")
+                message = f"List of {len(inconsistent_files)} inconsistent files: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds."
+                print(message)
+                f.write(f"{message}\n")
                 f.flush()
                 del inconsistent_files
 
             if len(missing_in_caom) > 0:
                 write_start_time = datetime.now(timezone.utc)
-                print(f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.")
-                f.write(f"\nList of {len(missing_in_caom)} files in SI and not in CAOM: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC.\n")
+                message = f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC."
+                print(message)
+                f.write(f"\n{message}\n")
                 f.write("category,uri,lastModified_si\n")
-#                for uri in missing_in_caom:
-#                    last_modified = si_query_result.filter(pl.col('uri') == uri)['lastModified'][0]
-#                    f.write(f"MISSING_IN_CAOM,{uri},{last_modified}\n")
                 for row in missing_in_caom.iter_rows(named=True):
                     f.write(f"MISSING_IN_CAOM,{row['uri']},{row['lastModified']}\n")
                 write_end_time = datetime.now(timezone.utc)
                 write_duration = write_end_time - write_start_time
-                print(f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.")
-                f.write(f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds.\n")
+                message = f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds."
+                print(message)
+                f.write(f"{message}\n")
                 f.flush()
                 del missing_in_caom
 
