@@ -125,7 +125,7 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
         (pl.col('contentCheckSum') != pl.col('contentCheckSum_si')) |
         (pl.col('contentLength') != pl.col('contentLength_si')) |
         (pl.col('contentType') != pl.col('contentType_si'))
-    ).sort(uri)
+    ).sort('uri')
     inconsistent_files = inconsistent_files.unique(subset=['uri'], keep='first')
 
 
