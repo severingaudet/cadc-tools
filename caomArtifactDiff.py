@@ -94,6 +94,10 @@ def query_caom_service(collection, si_namespace):
     ## Now sort the result by uri and remove any duplicates by retaining the first instance. Some collections such as JWST have multiple entries in CAOM for the same uri.
     service_query_result = service_query_result.sort('uri').unique(subset=['uri'], keep='first')
 
+    ## Now cast the data type of the contentLength column to Int64 as this is how it is represented in SI. If a collection has only null values for contentLength,
+    ## the data type will not be set to Int64 and this will cause problems when comparing the dataframes.
+    service_query_result = service_query_result.with_columns(pl.col('contentLength').cast(pl.Int64))
+
     return service_query_result
 
 ## GIven the results from CAOM and SI, compare them and write the differences to a CSV file.
