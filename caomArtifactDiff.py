@@ -15,7 +15,7 @@ COLLECTIONS_CONFIG = pl.DataFrame()
 SITES_CONFIG = pl.DataFrame()
 TOTAL_CAOM_QUERY_TIME = 0
 TOTAL_SI_QUERY_TIME = 0
-COLLECTION_START_TIME = datetime.now(timezone.utc)
+PROCESSING_START_TIME = datetime.now(timezone.utc)
 
 ## Execute the query as a sync call to the site URL, requesting CSV output as this is the most efficient
 ## way to get the query output which is then converted to a POLARS dataframe.
@@ -49,14 +49,16 @@ def query_si_service(si_namespace):
     ## Format the query to the inventory.Artifact table and execute it.
     service_query = f"""SELECT uri as uri, contentChecksum as contentCheckSum, contentLength as contentLength, contentType as contentType, contentLastModified as lastModified
         FROM inventory.Artifact AS A
-        WHERE uri LIKE '{si_namespace}/%'
-        order by uri"""    
+        WHERE uri LIKE '{si_namespace}/%'"""    
     service_query_result = execute_query(SI_URL, si_namespace, service_query)
 
     end_time = datetime.now(timezone.utc)
     duration = end_time - start_time
     TOTAL_SI_QUERY_TIME += duration.total_seconds()
     print(f"End time: {end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC; duration: {duration.total_seconds():.2f} seconds")
+
+    ## Now sort the result by uri and remove any duplicates by retaining the first instance. Although SI has a unique index on uri, this would protect against any change there.
+    service_query_result = service_query_result.sort('uri').unique(subset=['uri'], keep='first')
 
     return service_query_result
 
@@ -82,13 +84,15 @@ def query_caom_service(collection, si_namespace):
         JOIN caom2.Plane AS P ON O.obsID = P.obsID
         JOIN caom2.Artifact AS A ON A.planeID = P.planeID
         WHERE O.collection = '{collection}'
-        and A.uri LIKE '{si_namespace}/%'
-        order by A.uri"""
+        and A.uri LIKE '{si_namespace}/%'"""
     service_query_result = execute_query(ams_url, ams_site, service_query)
     end_time = datetime.now(timezone.utc)
     duration = end_time - start_time
     TOTAL_CAOM_QUERY_TIME += duration.total_seconds()
     print(f"End time: {end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC; duration: {duration.total_seconds():.2f} seconds")
+
+    ## Now sort the result by uri and remove any duplicates by retaining the first instance. Some collections such as JWST have multiple entries in CAOM for the same uri.
+    service_query_result = service_query_result.sort('uri').unique(subset=['uri'], keep='first')
 
     return service_query_result
 
@@ -98,26 +102,23 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
 
     cmp_start_time = datetime.now(timezone.utc)
 
-    ## create a new dataframe that contains the unique uri's and the first lastModified value of rows of uri's that are in CAOM but not in SI.
-
+   ## create a new dataframe that contains the uri and the lastModified value of rows of uri's that are in CAOM but not in SI.
     missing_in_si = pl.DataFrame()
     missing_in_si = caom_query_result.join(
         si_query_result, on='uri', how='anti'
     ).select(
         pl.col('uri'), pl.col('lastModified')
     ).sort('uri')
-    missing_in_si = missing_in_si.unique(subset=['uri'], keep='first')
 
-    ## create a new dataframe that contains the unique uri's and first lastModified columns of rows of uri's that are in SI but not in CAOM.
+    ## create a new dataframe that contains the uri and lastModified value of rows of uri's that are in SI but not in CAOM.
     missing_in_caom = pl.DataFrame()
     missing_in_caom = si_query_result.join(
         caom_query_result, on='uri', how='anti'
     ).select(
         pl.col('uri'), pl.col('lastModified')
     ).sort('uri')
-    missing_in_caom = missing_in_caom.unique(subset=['uri'], keep='first')
 
-    ## create a new dataframe that contains the rows of unique uri's that are in both CAOM and SI but have different contentCheckSum, contentLength or contentType values.
+    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentCheckSum, contentLength or contentType values.
     inconsistent_files = pl.DataFrame()
     inconsistent_files = caom_query_result.join(
         si_query_result, on='uri', suffix='_si'
@@ -126,14 +127,9 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
         (pl.col('contentLength') != pl.col('contentLength_si')) |
         (pl.col('contentType') != pl.col('contentType_si'))
     ).sort('uri')
-    inconsistent_files = inconsistent_files.unique(subset=['uri'], keep='first')
-
 
     cmp_end_time = datetime.now(timezone.utc)
     cmp_duration = cmp_end_time - cmp_start_time
-
-    collection_end_time = datetime.now(timezone.utc)
-    collection_duration = collection_end_time - COLLECTION_START_TIME
 
     ## print a summary of the comparison results.
     print(f"Files in CAOM: {len(caom_query_result)}; files in SI: {len(si_query_result)}; files in CAOM and not in SI: {len(missing_in_si)}; inconsistent files: {len(inconsistent_files)}; files in SI and not in CAOM: {len(missing_in_caom)}")
@@ -144,9 +140,7 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
         with open(filename, 'w') as f:
             f.write(f"Comparison results for collection {collection}\n")
             f.write(f"\n")
-            f.write(f"Processing began on {COLLECTION_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
-            f.write(f"Processing ended on {collection_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
-            f.write(f"Total collection processing time: {collection_duration.total_seconds():.2f} seconds\n")
+            f.write(f"Processing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
             f.write(f"\n")
             f.write(f"Total CAOM query time: {TOTAL_CAOM_QUERY_TIME:.2f} seconds\n")
             f.write(f"Total SI query time: {TOTAL_SI_QUERY_TIME:.2f} seconds\n")
@@ -156,7 +150,7 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
             f.write(f"Files and dataframe size in SI: {si_query_result.height} rows, {si_query_result.estimated_size()} bytes\n")
             f.write(f"Files and dataframe size for in CAOM and not in SI: {missing_in_si.height} rows, {missing_in_si.estimated_size()} bytes\n")
             f.write(f"Files and dataframe size for inconsistent files: {inconsistent_files.height} rows, {inconsistent_files.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size for in SI and not in ßCAOM: {missing_in_caom.height} rows, {missing_in_caom.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size for in SI and not in CAOM: {missing_in_caom.height} rows, {missing_in_caom.estimated_size()} bytes\n")
             f.flush()
     
             if len(missing_in_si) > 0:
@@ -207,6 +201,13 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
                 f.flush()
                 del missing_in_caom
 
+            ## Finally, write the processing start and end times and the total processing duration.
+            processing_end_time = datetime.now(timezone.utc)
+            processing_duration = processing_end_time - PROCESSING_START_TIME
+            f.write(f"\nProcessing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
+            f.write(f"Processing ended on {processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
+            f.write(f"Total collection processing time: {processing_duration.total_seconds():.2f} seconds\n")
+
     except Exception as e:
         print(f"Error writing comparison results to {filename}: {e}")
         exit(1)
@@ -216,11 +217,11 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
 ## For each collection/namespace combination, compare the entire list of files in one go.
 
 def compare_collection(collection):
-    global TOTAL_CAOM_QUERY_TIME, TOTAL_SI_QUERY_TIME, COLLECTION_START_TIME
+    global TOTAL_CAOM_QUERY_TIME, TOTAL_SI_QUERY_TIME, PROCESSING_START_TIME
 
     TOTAL_CAOM_QUERY_TIME = 0
     TOTAL_SI_QUERY_TIME = 0
-    COLLECTION_START_TIME = datetime.now(timezone.utc)
+    PROCESSING_START_TIME = datetime.now(timezone.utc)
 
     cmp_filename = f"{OUTPUT_FILENAME_ROOT}"
     caom_query_results = pl.DataFrame()
