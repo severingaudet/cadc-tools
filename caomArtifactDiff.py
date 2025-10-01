@@ -13,8 +13,8 @@ SI_URL = "https://ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/luskan"
 MAPPINGS_CONFIG = pl.DataFrame()
 COLLECTIONS_CONFIG = pl.DataFrame()
 SITES_CONFIG = pl.DataFrame()
-TOTAL_CAOM_QUERY_TIME = 0
-TOTAL_SI_QUERY_TIME = 0
+CAOM_QUERY_DURATION = 0
+SI_QUERY_DURATION = 0
 PROCESSING_START_TIME = datetime.now(timezone.utc)
 
 ## Execute the query as a sync call to the site URL, requesting CSV output as this is the most efficient
@@ -41,35 +41,30 @@ def execute_query(site_url, site_name, site_query):
 
 ## Query the Storage Inventory service for the specified collection.
 def query_si_service(si_namespace):
-    global TOTAL_SI_QUERY_TIME
-
-    start_time = datetime.now(timezone.utc)
-    print(f"Start time: {start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC")
+    global SI_QUERY_DURATION
 
     ## Format the query to the inventory.Artifact table and execute it.
+    start_time = datetime.now(timezone.utc)
     service_query = f"""SELECT uri as uri, contentChecksum as contentCheckSum, contentLength as contentLength, contentType as contentType, contentLastModified as lastModified
         FROM inventory.Artifact AS A
         WHERE uri LIKE '{si_namespace}/%'"""    
     service_query_result = execute_query(SI_URL, si_namespace, service_query)
 
-    end_time = datetime.now(timezone.utc)
-    duration = end_time - start_time
-    TOTAL_SI_QUERY_TIME += duration.total_seconds()
-    print(f"End time: {end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC; duration: {duration.total_seconds():.2f} seconds")
-
     ## Now sort the result by uri and remove any duplicates by retaining the first instance. Although SI has a unique index on uri, this would protect against any change there.
     service_query_result = service_query_result.sort('uri').unique(subset=['uri'], keep='first')
+
+    end_time = datetime.now(timezone.utc)
+    duration = end_time - start_time
+    SI_QUERY_DURATION += duration.total_seconds()
 
     return service_query_result
 
 ## Query the caom repository service for the specified collection in the specified si_namespace.
 def query_caom_service(collection, si_namespace):
-    global TOTAL_CAOM_QUERY_TIME
-
-    start_time = datetime.now(timezone.utc)
-    print(f"Start time: {start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC")
+    global CAOM_QUERY_DURATION
 
     ## First determine which ams_site and ams_url to use for the given collection
+    start_time = datetime.now(timezone.utc)
     row = COLLECTIONS_CONFIG.filter(pl.col('collection') == collection)
     ams_site = row['ams_site'][0]
     site_row = SITES_CONFIG.filter(pl.col('site_name') == ams_site)
@@ -86,10 +81,6 @@ def query_caom_service(collection, si_namespace):
         WHERE O.collection = '{collection}'
         and A.uri LIKE '{si_namespace}/%'"""
     service_query_result = execute_query(ams_url, ams_site, service_query)
-    end_time = datetime.now(timezone.utc)
-    duration = end_time - start_time
-    TOTAL_CAOM_QUERY_TIME += duration.total_seconds()
-    print(f"End time: {end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC; duration: {duration.total_seconds():.2f} seconds")
 
     ## Now sort the result by uri and remove any duplicates by retaining the first instance. Some collections such as JWST have multiple entries in CAOM for the same uri.
     service_query_result = service_query_result.sort('uri').unique(subset=['uri'], keep='first')
@@ -97,6 +88,10 @@ def query_caom_service(collection, si_namespace):
     ## Now cast the data type of the contentLength column to Int64 as this is how it is represented in SI. If a collection has only null values for contentLength,
     ## the data type will not be set to Int64 and this will cause problems when comparing the dataframes.
     service_query_result = service_query_result.with_columns(pl.col('contentLength').cast(pl.Int64))
+        
+    end_time = datetime.now(timezone.utc)
+    duration = end_time - start_time
+    CAOM_QUERY_DURATION += duration.total_seconds()
 
     return service_query_result
 
@@ -136,31 +131,31 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
     cmp_duration = cmp_end_time - cmp_start_time
 
     ## print a summary of the comparison results.
-    print(f"Files in CAOM: {len(caom_query_result)}; files in SI: {len(si_query_result)}; files in CAOM and not in SI: {len(missing_in_si)}; inconsistent files: {len(inconsistent_files)}; files in SI and not in CAOM: {len(missing_in_caom)}")
+    print(f"Files in CAOM: {len(caom_query_result)}; files in SI: {len(si_query_result)}; files in CAOM and not in SI: {len(missing_in_si)}; files in SI and not in CAOM: {len(missing_in_caom)}; inconsistent files: {len(inconsistent_files)}")
     
     ## Write the comparison results to a CSV file.
-    write_start_time = datetime.now(timezone.utc)
+    print(f"Writing comparison results to {filename}.")
     try:
         with open(filename, 'w') as f:
+            overall_write_start_time = datetime.now(timezone.utc)
             f.write(f"Comparison results for collection {collection}\n")
             f.write(f"\n")
             f.write(f"Processing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
             f.write(f"\n")
-            f.write(f"Total CAOM query time: {TOTAL_CAOM_QUERY_TIME:.2f} seconds\n")
-            f.write(f"Total SI query time: {TOTAL_SI_QUERY_TIME:.2f} seconds\n")
+            f.write(f"Total CAOM query time: {CAOM_QUERY_DURATION:.2f} seconds\n")
+            f.write(f"Total SI query time: {SI_QUERY_DURATION:.2f} seconds\n")
             f.write(f"Total comparison time: {cmp_duration.total_seconds():.2f} seconds\n")
             f.write(f"\n")
-            f.write(f"Files and dataframe size in CAOM: {caom_query_result.height} rows, {caom_query_result.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size in SI: {si_query_result.height} rows, {si_query_result.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size for in CAOM and not in SI: {missing_in_si.height} rows, {missing_in_si.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size for inconsistent files: {inconsistent_files.height} rows, {inconsistent_files.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size for in SI and not in CAOM: {missing_in_caom.height} rows, {missing_in_caom.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size in CAOM: {len(caom_query_result)} rows, {caom_query_result.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size in SI: {len(si_query_result)} rows, {si_query_result.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size for in CAOM and not in SI: {len(missing_in_si)} rows, {missing_in_si.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size for in SI and not in CAOM: {len(missing_in_caom)} rows, {missing_in_caom.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size for inconsistent files: {len(inconsistent_files)} rows, {inconsistent_files.estimated_size()} bytes\n")
             f.flush()
     
             if len(missing_in_si) > 0:
                 write_start_time = datetime.now(timezone.utc)
                 message = f"List of {len(missing_in_si)} files in CAOM and not in SI: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC."
-                print(message)
                 f.write(f"\n{message}\n")
                 f.write("category,uri,lastModified_caom\n")
                 for row in missing_in_si.iter_rows(named=True):
@@ -168,31 +163,12 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
                 write_end_time = datetime.now(timezone.utc)
                 write_duration = write_end_time - write_start_time
                 message = f"List of {len(missing_in_si)} files in CAOM and not in SI: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds."
-                print(message)
                 f.write(f"{message}\n")
                 f.flush()
-                del missing_in_si
-
-            if len(inconsistent_files) > 0:
-                write_start_time = datetime.now(timezone.utc)
-                message = f"List of {len(inconsistent_files)} inconsistent files: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC."
-                print(message)
-                f.write(f"\n{message}\n")
-                f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
-                for row in inconsistent_files.iter_rows(named=True):
-                    f.write(f"INCONSISTENT,{row['uri']},{row['contentCheckSum']},{row['contentCheckSum_si']},{row['contentLength']},{row['contentLength_si']},{row['contentType']},{row['contentType_si']},{row['lastModified']},{row['lastModified_si']}\n")
-                write_end_time = datetime.now(timezone.utc)
-                write_duration = write_end_time - write_start_time
-                message = f"List of {len(inconsistent_files)} inconsistent files: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds."
-                print(message)
-                f.write(f"{message}\n")
-                f.flush()
-                del inconsistent_files
 
             if len(missing_in_caom) > 0:
                 write_start_time = datetime.now(timezone.utc)
                 message = f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC."
-                print(message)
                 f.write(f"\n{message}\n")
                 f.write("category,uri,lastModified_si\n")
                 for row in missing_in_caom.iter_rows(named=True):
@@ -200,17 +176,41 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
                 write_end_time = datetime.now(timezone.utc)
                 write_duration = write_end_time - write_start_time
                 message = f"List of {len(missing_in_caom)} files in SI and not in CAOM: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds."
-                print(message)
                 f.write(f"{message}\n")
                 f.flush()
-                del missing_in_caom
 
-            ## Finally, write the processing start and end times and the total processing duration.
+            if len(inconsistent_files) > 0:
+                write_start_time = datetime.now(timezone.utc)
+                message = f"List of {len(inconsistent_files)} inconsistent files: Write started at {write_start_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC."
+                f.write(f"\n{message}\n")
+                f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
+                for row in inconsistent_files.iter_rows(named=True):
+                    f.write(f"INCONSISTENT,{row['uri']},{row['contentCheckSum']},{row['contentCheckSum_si']},{row['contentLength']},{row['contentLength_si']},{row['contentType']},{row['contentType_si']},{row['lastModified']},{row['lastModified_si']}\n")
+                write_end_time = datetime.now(timezone.utc)
+                write_duration = write_end_time - write_start_time
+                message = f"List of {len(inconsistent_files)} inconsistent files: Write finished at {write_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC taking {write_duration.total_seconds():.2f} seconds."
+                f.write(f"{message}\n")
+                f.flush()
+
+            ## Finally, write the summary message
+            overall_write_end_time = datetime.now(timezone.utc)
+            write_duration = overall_write_end_time - overall_write_start_time
             processing_end_time = datetime.now(timezone.utc)
             processing_duration = processing_end_time - PROCESSING_START_TIME
-            f.write(f"\nProcessing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
-            f.write(f"Processing ended on {processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
-            f.write(f"Total collection processing time: {processing_duration.total_seconds():.2f} seconds\n")
+            
+            message = f"category,collection,files_in_caom,files_in_si,files_in_caom_not_in_si,files_in_si_not_in_caom,inconsistent_files,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_start_time,processing_end_time,processing_duration_seconds"
+            f.write(f"\n{message}\n")
+            message = f"SUMMARY,{collection},{len(caom_query_result)},{len(si_query_result)},{len(missing_in_si)},{len(missing_in_caom)},{len(inconsistent_files)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')},{processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')},{processing_duration.total_seconds():.2f}\n"
+            f.write(f"{message}\n")
+            f.flush()
+            print(message)
+
+            ## Explicitly delete the dataframes to free up memory.
+            del missing_in_si
+            del missing_in_caom
+            del inconsistent_files
+            del caom_query_result
+            del si_query_result
 
     except Exception as e:
         print(f"Error writing comparison results to {filename}: {e}")
@@ -221,10 +221,10 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
 ## For each collection/namespace combination, compare the entire list of files in one go.
 
 def compare_collection(collection):
-    global TOTAL_CAOM_QUERY_TIME, TOTAL_SI_QUERY_TIME, PROCESSING_START_TIME
+    global CAOM_QUERY_DURATION, SI_QUERY_DURATION, PROCESSING_START_TIME
 
-    TOTAL_CAOM_QUERY_TIME = 0
-    TOTAL_SI_QUERY_TIME = 0
+    CAOM_QUERY_DURATION = 0
+    SI_QUERY_DURATION = 0
     PROCESSING_START_TIME = datetime.now(timezone.utc)
 
     cmp_filename = f"{OUTPUT_FILENAME_ROOT}"
