@@ -136,6 +136,19 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
 
     cmp_start_time = datetime.now(timezone.utc)
 
+    ## Count the number of uri's that are in both CAOM and SI and have the same contentCheckSum, contentLength and contentType values.
+    consistent_files = pl.DataFrame()
+    consistent_files = caom_query_result.join(
+        si_query_result, on='uri', suffix='_si'
+    ).filter(
+        (pl.col('contentCheckSum') == pl.col('contentCheckSum_si')) &
+        (pl.col('contentLength') == pl.col('contentLength_si')) &
+        (pl.col('contentType') == pl.col('contentType_si'))
+    ).select(pl.col('uri')).sort('uri')
+    num_consistent_files = len(consistent_files)
+    size_consistent_files = consistent_files.estimated_size()
+    del consistent_files
+
    ## create a new dataframe that contains the uri and the lastModified value of rows of uri's that are in CAOM but not in SI.
     missing_in_si = pl.DataFrame()
     missing_in_si = caom_query_result.join(
@@ -243,6 +256,7 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
             f.write(f"\n")
             f.write(f"Files and dataframe size in CAOM: {len(caom_query_result)} rows, {caom_query_result.estimated_size()} bytes\n")
             f.write(f"Files and dataframe size in SI: {len(si_query_result)} rows, {si_query_result.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size for consistent files: {num_consistent_files} rows, {size_consistent_files} bytes\n")
             f.write(f"Files and dataframe size for in CAOM and not in SI: {len(missing_in_si)} rows, {missing_in_si.estimated_size()} bytes\n")
             f.write(f"Files and dataframe size for in SI and not in CAOM: {len(missing_in_caom)} rows, {missing_in_caom.estimated_size()} bytes\n")
             f.write(f"Files and dataframe size with different checksums, lengths and types: {len(diff_checksums_lengths_types)} rows, {diff_checksums_lengths_types.estimated_size()} bytes\n")
@@ -273,9 +287,9 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
             processing_end_time = datetime.now(timezone.utc)
             processing_duration = processing_end_time - PROCESSING_START_TIME
             
-            message = f"category,collection,processing_start_time,files_in_caom,files_in_si,files_in_caom_not_in_si,files_in_si_not_in_caom,diff_checksums_lengths_types,diff_checksums_lengths,diff_checksums_types,diff_checksums,diff_lengths_types,diff_lengths,diff_types,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
+            message = f"category,collection,processing_start_time,files_in_caom,files_in_si,consistent_files,files_in_caom_not_in_si,files_in_si_not_in_caom,diff_checksums_lengths_types,diff_checksums_lengths,diff_checksums_types,diff_checksums,diff_lengths_types,diff_lengths,diff_types,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
             f.write(f"\n{message}\n")
-            message = f"SUMMARY,{collection},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')},{len(caom_query_result)},{len(si_query_result)},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums_lengths_types)},{len(diff_checksums_lengths)},{len(diff_checksums_types)},{len(diff_checksums)},{len(diff_lengths_types)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')}\n"
+            message = f"SUMMARY,{collection},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')},{len(caom_query_result)},{len(si_query_result)},{num_consistent_files},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums_lengths_types)},{len(diff_checksums_lengths)},{len(diff_checksums_types)},{len(diff_checksums)},{len(diff_lengths_types)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')}\n"
             f.write(f"{message}\n")
             f.flush()
             print(message)
