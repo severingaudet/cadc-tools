@@ -15,6 +15,7 @@ COLLECTIONS_CONFIG = pl.DataFrame()
 SITES_CONFIG = pl.DataFrame()
 CAOM_QUERY_DURATION = 0
 SI_QUERY_DURATION = 0
+MULTI_VALUED_SEPARATOR = '_'
 PROCESSING_START_TIME = datetime.now(timezone.utc)
 
 ## Execute the query as a sync call to the site URL, requesting CSV output as this is the most efficient
@@ -328,13 +329,13 @@ def process_collections_namespaces(collections, si_namespaces):
 
     ## If there are underscores (separators), wplit the collections and namespaces into lists.
   
-    if '_' in collections:
-        collection_list = collections.split('_')
+    if MULTI_VALUED_SEPARATOR in collections:
+        collection_list = collections.split(MULTI_VALUED_SEPARATOR)
     else:
         collection_list = [collections]
     
-    if '_' in si_namespaces:
-        si_namespace_list = si_namespaces.split('_')
+    if MULTI_VALUED_SEPARATOR in si_namespaces:
+        si_namespace_list = si_namespaces.split(MULTI_VALUED_SEPARATOR)
     else:
         si_namespace_list = [si_namespaces]
 
@@ -498,6 +499,6 @@ if __name__ == "__main__":
         collections = row['collections']
         si_namespaces = row['si_namespaces']
         print(f"Collection(s) {collections} uses SI namespace(s): {si_namespaces}.")    
-        process_collections_namespaces(collections, si_namespaces)
+#        process_collections_namespaces(collections, si_namespaces)
     print("All collections processed.")    
     exit(0)
