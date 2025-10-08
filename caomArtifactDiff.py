@@ -499,6 +499,6 @@ if __name__ == "__main__":
         collections = row['collections']
         si_namespaces = row['si_namespaces']
         print(f"Collection(s) {collections} uses SI namespace(s): {si_namespaces}.")    
-#        process_collections_namespaces(collections, si_namespaces)
+        process_collections_namespaces(collections, si_namespaces)
     print("All collections processed.")    
     exit(0)
