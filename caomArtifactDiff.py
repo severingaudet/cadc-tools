@@ -132,7 +132,7 @@ def write_inconsistent_files(f, filename, text, inconsistent_files):
 
 ## Given the results from CAOM and SI, compare them and write the differences to a CSV file.
 
-def compare_results(collection, caom_query_result, si_query_result, filename):
+def compare_results(collections, caom_query_result, si_query_result, filename):
 
     cmp_start_time = datetime.now(timezone.utc)
 
@@ -246,7 +246,7 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
     try:
         with open(filename, 'w') as f:
             write_start_time = datetime.now(timezone.utc)
-            f.write(f"Comparison results for collection {collection}\n")
+            f.write(f"Comparison results for collection(s) {collections}\n")
             f.write(f"\n")
             f.write(f"Processing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
             f.write(f"\n")
@@ -287,9 +287,9 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
             processing_end_time = datetime.now(timezone.utc)
             processing_duration = processing_end_time - PROCESSING_START_TIME
             
-            message = f"category,collection,processing_start_time,files_in_caom,files_in_si,consistent_files,files_in_caom_not_in_si,files_in_si_not_in_caom,diff_checksums_lengths_types,diff_checksums_lengths,diff_checksums_types,diff_checksums,diff_lengths_types,diff_lengths,diff_types,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
+            message = f"category,collections,processing_start_time,files_in_caom,files_in_si,consistent_files,files_in_caom_not_in_si,files_in_si_not_in_caom,diff_checksums_lengths_types,diff_checksums_lengths,diff_checksums_types,diff_checksums,diff_lengths_types,diff_lengths,diff_types,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
             f.write(f"\n{message}\n")
-            message = f"SUMMARY,{collection},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')},{len(caom_query_result)},{len(si_query_result)},{num_consistent_files},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums_lengths_types)},{len(diff_checksums_lengths)},{len(diff_checksums_types)},{len(diff_checksums)},{len(diff_lengths_types)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')}\n"
+            message = f"SUMMARY,{collections},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')},{len(caom_query_result)},{len(si_query_result)},{num_consistent_files},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums_lengths_types)},{len(diff_checksums_lengths)},{len(diff_checksums_types)},{len(diff_checksums)},{len(diff_lengths_types)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')}\n"
             f.write(f"{message}\n")
             f.flush()
             print(message)
@@ -315,7 +315,7 @@ def compare_results(collection, caom_query_result, si_query_result, filename):
         
 ## For each collection/namespace combination, compare the entire list of files in one go.
 
-def compare_collection(collection):
+def process_collections_namespaces(collections, si_namespaces):
     global CAOM_QUERY_DURATION, SI_QUERY_DURATION, PROCESSING_START_TIME
 
     CAOM_QUERY_DURATION = 0
@@ -325,44 +325,45 @@ def compare_collection(collection):
     cmp_filename = f"{OUTPUT_FILENAME_ROOT}"
     caom_query_results = pl.DataFrame()
     si_query_results = pl.DataFrame()
-    collection_list = []
-    si_namespace_list = []
+
+    ## If there are underscores (separators), wplit the collections and namespaces into lists.
+  
+    if '_' in collections:
+        collection_list = collections.split('_')
+    else:
+        collection_list = [collections]
     
-    ## Determine the multiplicity of collections and/or si_namespaces. Starting with the given collection, how many si_namespaces
-    ## is it referencing and in those referenced si_namespaces, how many collections are there?
-    ## A collection may use one or more si_namespaces, and a si_namespace may be used by one or more collections.
+    if '_' in si_namespaces:
+        si_namespace_list = si_namespaces.split('_')
+    else:
+        si_namespace_list = [si_namespaces]
 
-    mapping_by_collection_rows = MAPPINGS_CONFIG.filter(pl.col('collection') == collection)
-    for mapping_by_collection_row in mapping_by_collection_rows.iter_rows(named=True):
-        si_namespace = mapping_by_collection_row['si_namespace']
-        si_namespace_list.append(si_namespace)
-        si_namespace_name = si_namespace.replace(':', '-')
-
-        mapping_by_namespace_rows = MAPPINGS_CONFIG.filter(pl.col('si_namespace') == si_namespace)
-        for mapping_by_namespace_row in mapping_by_namespace_rows.iter_rows(named=True):
-            collection_to_query = mapping_by_namespace_row['collection']
-            cmp_filename = f"{cmp_filename}_{collection_to_query}"
-            collection_list.append(collection_to_query)
-            print(f"Querying CAOM for collection {collection_to_query} with artifacts like {si_namespace}/%.")
+    ## Loop through each collection and namespace combination, query CAOM and concatenate the results into a single dataframe.
+    for collection in collection_list:
+        for si_namespace in si_namespace_list:
+            print(f"Querying CAOM for collection {collection} with artifacts like {si_namespace}/%.")
             try:
                 query_result = query_caom_service(collection, si_namespace)
                 caom_query_results = pl.concat([caom_query_results, query_result])
             except Exception as e:
-                print(f"Error querying CAOM for collection {collection} in site {mapping_by_collection_row['ams_site']}: {e}")
+                print(f"Error querying CAOM for collection {collection} in namespace {si_namespace}: {e}")
                 return   
-    
-        cmp_filename = f"{cmp_filename}_{si_namespace_name}"
-        print(f"Querying SI namespace {si_namespace} for collections {collection_list}.")  
+
+    ## Loop through each namespace and query SI, concatenating the results into a single dataframe.
+    for si_namespace in si_namespace_list:
+        print(f"Querying SI namespace {si_namespace}.")  
         try:
             query_result = query_si_service(si_namespace)
             si_query_results = pl.concat([si_query_results, query_result])
         except Exception as e:
-            print(f"Error querying SI for collection {collection} in namespace {mapping_by_collection_row['si_namespace']}: {e}")
+            print(f"Error querying SI for collection {collection} in namespace {si_namespace}: {e}")
             return
 
-    cmp_filename = f"{cmp_filename}_diff.csv"
-    print(f"Comparing SI namespace(s) {si_namespace_list} and collection(s) {collection_list}.")  
-    compare_results(collection, caom_query_results, si_query_results, cmp_filename)
+    ## Now compare the results and write the differences to a CSV file.
+    si_namespace_names = si_namespaces.replace(':', '-')
+    cmp_filename = f"{cmp_filename}_{collections}_{si_namespace_names}.csv"
+    print(f"Comparing  collection(s) {collections} and SI namespace(s) {si_namespaces} and writing results to {cmp_filename}.")  
+    compare_results(collections, caom_query_results, si_query_results, cmp_filename)
     
     return
 
@@ -397,14 +398,43 @@ def read_configurations():
     
     return
 
+## Prepare a list of collection/si_namespace mappings to be processed. Create a data frame with columns collections and si_namespaces.
+## For a collection that used multiple si namespaces, concatenate the namespace names with a semi-colon.
+## For a si_namespace that is used by multiple collections, concatenate the collection names with a semi-colon.
+def prepare_collection_si_mappings(collection_list):
+    processing_df = pl.DataFrame()
+    for collection in collection_list:
+       
+       ## Find all namespaces for the given collection.
+        mapping_by_collection_rows = MAPPINGS_CONFIG.filter(pl.col('collection') == collection)
+        si_namespace_list = []
+        for mapping_by_collection_row in mapping_by_collection_rows.iter_rows(named=True):
+            si_namespace = mapping_by_collection_row['si_namespace']
+            if si_namespace not in si_namespace_list:
+                si_namespace_list.append(si_namespace)
+        
+            ## Create a list of all collections for the given namespace. Remove collections from the list as they are found to avoid duplicates.
+            mapping_by_namespace_rows = MAPPINGS_CONFIG.filter(pl.col('si_namespace') == si_namespace)
+            collections_to_query_list = []
+            for mapping_by_namespace_row in mapping_by_namespace_rows.iter_rows(named=True):
+                collection_to_query = mapping_by_namespace_row['collection']
+                if collection_to_query not in collections_to_query_list:
+                    collections_to_query_list.append(collection_to_query)
+                if collection_to_query != collection and collection_to_query in collection_list:
+                    collection_list.remove(collection_to_query)
+        
+        collections_to_query = "_".join(collections_to_query_list)
+        si_namespaces = "_".join(si_namespace_list)
+        new_row = pl.DataFrame({"collections": [collections_to_query], "si_namespaces": [si_namespaces]})
+        processing_df = pl.concat([processing_df, new_row])
+    
+    return processing_df
 
 ## If the collection list is empty, read all collections from the collections configuration file that have in_si = "True".
 ## Otherwise, use the collection list provided as arguments to the script and check that they are valid collections.
-
 def validate_collection_list(collection_list):
     if len(collection_list) == 0:
         collection_list = COLLECTIONS_CONFIG.filter(pl.col('in_si') == True)['collection'].to_list()
-        print(f"Querying all collections: {collection_list}")
     else:
         ## Verify the collections provided as arguments to the script are valid.
         for collection in collection_list:
@@ -412,7 +442,8 @@ def validate_collection_list(collection_list):
             if row.is_empty() or not row['in_si'][0]:
                 print(f"Collection {collection} not found in collections configuration file.")
                 exit(1)    
-        print(f"Querying specified collection(s): {collection_list}")
+    
+    print(f"Collections to be processed: {collection_list}.")
     return collection_list
 
 ## Main function to execute the script.
@@ -447,10 +478,11 @@ if __name__ == "__main__":
     ## Reaed all configuration files into global dataframes.
     read_configurations()
 
-    ## Create the list of collections to verify, either from the list provided on the command line
-    ## create the list from the collections configuration.
-    ## If no collections are specified, all collections in the configuration file will be queried.
+    ## Create the list of collections to verify, either from the list provided on the command line or from the configuration file.
     collection_list = validate_collection_list(sys.argv[1:])
+
+    ## Prepare the list of collection/si_namespace mappings to be processed.
+    processing_df = prepare_collection_si_mappings(collection_list)
 
     ## Creat a subdirectory for the output files if it does not exist.
     try:
@@ -461,9 +493,11 @@ if __name__ == "__main__":
         print(f"Error creating output directory {OUTPUT_DIRECTORY}: {e}")
         exit(1)
     
-    ## Now loop though the collection list.
-    for collection in collection_list:
-        print(f"Processing collection {collection}.")
-        compare_collection(collection)
+    ## Now loop though the processing dataframe.
+    for row in processing_df.iter_rows(named=True):
+        collections = row['collections']
+        si_namespaces = row['si_namespaces']
+        print(f"Collection(s) {collections} uses SI namespace(s): {si_namespaces}.")    
+        process_collections_namespaces(collections, si_namespaces)
     print("All collections processed.")    
     exit(0)
