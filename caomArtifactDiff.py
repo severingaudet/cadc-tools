@@ -166,64 +166,21 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
         pl.col('uri'), pl.col('lastModified')
     ).sort('uri')
 
-    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI, have different contentCheckSum values while other values match.
+    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI, have different contentCheckSums.
     diff_checksums = pl.DataFrame()
     diff_checksums = caom_query_result.join(
         si_query_result, on='uri', suffix='_si'
     ).filter(
-        (pl.col('contentCheckSum') != pl.col('contentCheckSum_si')) &
-        (pl.col('contentLength') == pl.col('contentLength_si')) &
-        (pl.col('contentType') == pl.col('contentType_si'))
+        (pl.col('contentCheckSum') != pl.col('contentCheckSum_si')) 
     ).sort('uri')
 
-    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentCheckSum values and contentLength but the same contentType values.
-    diff_checksums_lengths = pl.DataFrame()
-    diff_checksums_lengths = caom_query_result.join(
-        si_query_result, on='uri', suffix='_si'
-    ).filter(
-        (pl.col('contentCheckSum') != pl.col('contentCheckSum_si')) &
-        (pl.col('contentLength') != pl.col('contentLength_si')) &
-        (pl.col('contentType') == pl.col('contentType_si'))
-    ).sort('uri')
-
-    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentCheckSum values and contentType but the same contentLength values.
-    diff_checksums_types = pl.DataFrame()
-    diff_checksums_types = caom_query_result.join(
-        si_query_result, on='uri', suffix='_si'
-    ).filter(
-        (pl.col('contentCheckSum') != pl.col('contentCheckSum_si')) &
-        (pl.col('contentLength') == pl.col('contentLength_si')) &
-        (pl.col('contentType') != pl.col('contentType_si'))
-    ).sort('uri')
-
-    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentCheckSum values, contentLength and contentType values.
-    diff_checksums_lengths_types = pl.DataFrame()
-    diff_checksums_lengths_types = caom_query_result.join(
-        si_query_result, on='uri', suffix='_si'
-    ).filter(
-        (pl.col('contentCheckSum') != pl.col('contentCheckSum_si')) &
-        (pl.col('contentLength') != pl.col('contentLength_si')) &
-        (pl.col('contentType') != pl.col('contentType_si'))
-    ).sort('uri')
-
-    ## Create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentLength values while other values match.
+    ## Create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have the same contentCheckSum values but different contentLength values.
     diff_lengths = pl.DataFrame()
     diff_lengths = caom_query_result.join(
         si_query_result, on='uri', suffix='_si'
     ).filter(
         (pl.col('contentCheckSum') == pl.col('contentCheckSum_si')) &
-        (pl.col('contentLength') != pl.col('contentLength_si')) &
-        (pl.col('contentType') == pl.col('contentType_si'))
-    ).sort('uri')
-
-    ## Create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentLength and contentType values while other values match.
-    diff_lengths_types = pl.DataFrame()
-    diff_lengths_types = caom_query_result.join(
-        si_query_result, on='uri', suffix='_si'
-    ).filter(
-        (pl.col('contentCheckSum') == pl.col('contentCheckSum_si')) &
-        (pl.col('contentLength') != pl.col('contentLength_si')) &
-        (pl.col('contentType') != pl.col('contentType_si'))
+        (pl.col('contentLength') != pl.col('contentLength_si'))
     ).sort('uri')
 
     ## Create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentType values while other values match.
@@ -260,13 +217,9 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
             f.write(f"Files and dataframe size for consistent files: {num_consistent_files} rows, {size_consistent_files} bytes\n")
             f.write(f"Files and dataframe size for in CAOM and not in SI: {len(missing_in_si)} rows, {missing_in_si.estimated_size()} bytes\n")
             f.write(f"Files and dataframe size for in SI and not in CAOM: {len(missing_in_caom)} rows, {missing_in_caom.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with different checksums, lengths and types: {len(diff_checksums_lengths_types)} rows, {diff_checksums_lengths_types.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with different checksums and lengths: {len(diff_checksums_lengths)} rows, {diff_checksums_lengths.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with different checksums and types: {len(diff_checksums_types)} rows, {diff_checksums_types.estimated_size()} bytes\n")
             f.write(f"Files and dataframe size with different checksums: {len(diff_checksums)} rows, {diff_checksums.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with different lengths and types: {len(diff_lengths_types)} rows, {diff_lengths_types.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with different lengths: {len(diff_lengths)} rows, {diff_lengths.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with different types: {len(diff_types)} rows, {diff_types.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size with same checksum but different lengths: {len(diff_lengths)} rows, {diff_lengths.estimated_size()} bytes\n")
+            f.write(f"Files and dataframe size with same checksums and lengths but different types: {len(diff_types)} rows, {diff_types.estimated_size()} bytes\n")
             f.flush()
     
             ## Write the missing files to the output file.
@@ -274,11 +227,7 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
             write_missing_files(f, filename, "MISSING_IN_CAOM", missing_in_caom)
 
             ## Write the inconsistent files to the output file.
-            write_inconsistent_files(f, filename, "DIFF_CHECKSUMS_LENGTHS_TYPES", diff_checksums_lengths_types)
-            write_inconsistent_files(f, filename, "DIFF_CHECKSUMS_LENGTHS", diff_checksums_lengths)
-            write_inconsistent_files(f, filename, "DIFF_CHECKSUMS_TYPES", diff_checksums_types)
             write_inconsistent_files(f, filename, "DIFF_CHECKSUMS", diff_checksums)
-            write_inconsistent_files(f, filename, "DIFF_LENGTHS_TYPES", diff_lengths_types)
             write_inconsistent_files(f, filename, "DIFF_LENGTHS", diff_lengths)
             write_inconsistent_files(f, filename, "DIFF_TYPES", diff_types)
             
@@ -288,9 +237,9 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
             processing_end_time = datetime.now(timezone.utc)
             processing_duration = processing_end_time - PROCESSING_START_TIME
             
-            message = f"category,collections,processing_start_time,files_in_caom,files_in_si,consistent_files,files_in_caom_not_in_si,files_in_si_not_in_caom,diff_checksums_lengths_types,diff_checksums_lengths,diff_checksums_types,diff_checksums,diff_lengths_types,diff_lengths,diff_types,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
+            message = f"category,collections,processing_start_time,files_in_caom,files_in_si,consistent_files,files_in_caom_not_in_si,files_in_si_not_in_caom,diff_checksums,good_checksums_diff_lengths,good_checksums_lengths_diff_types,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
             f.write(f"\n{message}\n")
-            message = f"SUMMARY,{collections},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')},{len(caom_query_result)},{len(si_query_result)},{num_consistent_files},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums_lengths_types)},{len(diff_checksums_lengths)},{len(diff_checksums_types)},{len(diff_checksums)},{len(diff_lengths_types)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')}\n"
+            message = f"SUMMARY,{collections},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')},{len(caom_query_result)},{len(si_query_result)},{num_consistent_files},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')}\n"
             f.write(f"{message}\n")
             f.flush()
             print(message)
@@ -298,11 +247,7 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
             ## Explicitly delete the dataframes to free up memory.
             del missing_in_si
             del missing_in_caom
-            del diff_checksums_lengths_types
-            del diff_checksums_lengths
-            del diff_checksums_types
             del diff_checksums
-            del diff_lengths_types
             del diff_lengths
             del diff_types
             del caom_query_result
