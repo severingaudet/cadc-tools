@@ -206,7 +206,7 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
             write_start_time = datetime.now(timezone.utc)
             f.write(f"Comparison results for collection(s) {collections}\n")
             f.write(f"\n")
-            f.write(f"Processing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')} UTC\n")
+            f.write(f"Processing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')} UTC\n")
             f.write(f"\n")
             f.write(f"Total CAOM query time: {CAOM_QUERY_DURATION:.2f} seconds\n")
             f.write(f"Total SI query time: {SI_QUERY_DURATION:.2f} seconds\n")
@@ -239,7 +239,7 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
             
             message = f"category,collections,processing_start_time,files_in_caom,files_in_si,consistent_files,files_in_caom_not_in_si,files_in_si_not_in_caom,diff_checksums,good_checksums_diff_lengths,good_checksums_lengths_diff_types,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
             f.write(f"\n{message}\n")
-            message = f"SUMMARY,{collections},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H-%M-%S')},{len(caom_query_result)},{len(si_query_result)},{num_consistent_files},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H-%M-%S')}\n"
+            message = f"SUMMARY,{collections},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')},{len(caom_query_result)},{len(si_query_result)},{num_consistent_files},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
             f.write(f"{message}\n")
             f.flush()
             print(message)
