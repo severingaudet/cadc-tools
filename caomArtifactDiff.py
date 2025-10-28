@@ -7,8 +7,8 @@ import sys
 
 ## Set up variables
 CERT_FILENAME = f"{Path.home()}/.ssl/cadcproxy.pem"
-OUTPUT_DIRECTORY = f"caomArtifactDiff_reports"
-OUTPUT_FILENAME_ROOT = "caomArtifactDiff"
+OUTPUT_DIRECTORY = f"artifactDiff_reports"
+OUTPUT_FILENAME_ROOT = "artifactDiff"
 SI_URL = "https://ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/luskan"
 MAPPINGS_CONFIG = pl.DataFrame()
 COLLECTIONS_CONFIG = pl.DataFrame()
@@ -407,12 +407,12 @@ if __name__ == "__main__":
         exit(1)
     
     ## Determine where the siMonitoring directory is located and change to that directory.
-    if os.path.isdir("/Users/gaudet_1/work/caomMonitoring"):
-        os.chdir("/Users/gaudet_1/work/caomMonitoring")
-    elif os.path.isdir("/arc/projects/CADC/caomMonitoring"):
-        os.chdir("/arc/projects/CADC/caomMonitoring")
+    if os.path.isdir("/Users/gaudet_1/work/collectionAuditing"):
+        os.chdir("/Users/gaudet_1/work/collectionAuditing")
+    elif os.path.isdir("/arc/projects/CADC/collectionAuditing"):
+        os.chdir("/arc/projects/CADC/collectionAuditing")
     else:
-        print("Unable to determine the location of the caomMonitoring directory.")
+        print("Unable to determine the location of the collectionAuditing directory.")
         exit(1)
 
     ## Check the first argument to determine if help is requested.
