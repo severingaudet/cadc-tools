@@ -15,10 +15,15 @@ COLLECTIONS_CONFIG = pl.DataFrame()
 SITES_CONFIG = pl.DataFrame()
 
 PLANE_ARTIFACT_TYPES_DF = pl.DataFrame()
+DISTINCT_PLANE_ARTIFACT_TYPES_DF = pl.DataFrame()
 ALL_TYPES_DF = pl.DataFrame()
 NO_PLANES_DF = pl.DataFrame()
 NO_ARTIFACTS_DF = pl.DataFrame()
 JUNK_PLANES_DF = pl.DataFrame()
+
+NO_PLANE_TEXT = "NO_PLANES"
+NO_ARTIFACT_TEXT = "NO_ARTIFACTS"
+TYPE_TEXT = "TYPE"
 
 ## Query the ams repository service for the specified collection.
 def query_ams_service(ams_url, query):
@@ -58,7 +63,7 @@ def query_collection(collection):
     ams_url = site_row['site_url'][0]
 
     query_no_planes = f"""
-            select O.observationID, O.maxLastModified 
+            select '{NO_PLANE_TEXT}' as category, collection, O.observationID, O.maxLastModified 
             from caom2.Observation as O left outer join caom2.Plane as P on O.obsID = P.obsID
             where O.collection = '{collection}' and P.planeID is null
         """.replace('\n', ' ')
@@ -66,7 +71,7 @@ def query_collection(collection):
     print( f"Observations with no planes: {len(NO_PLANES_DF)}" )
 
     query_no_artifacts = f"""
-            select O.observationID, P.planeID, P.dataProductType, P.maxLastModified
+            select '{NO_ARTIFACT_TEXT}' as category, collection, O.observationID, P.planeID, P.dataProductType, P.maxLastModified
             from caom2.Observation as O join caom2.Plane as P on O.obsID = P.obsID left outer join caom2.Artifact as A on P.planeID = A.planeID
             where O.collection = '{collection}' and A.artifactID is null
         """.replace('\n', ' ')
@@ -74,7 +79,7 @@ def query_collection(collection):
     print( f"Planes with no artifacts: {len(NO_ARTIFACTS_DF)}" )
 
     query_junk_planes = f"""
-            select O.observationID, P.planeID, P.dataProductType, P.maxLastModified
+            select 'JUNK_PLANE' as category, collection, O.observationID, P.planeID, P.dataProductType, P.maxLastModified
             from caom2.Observation as O join caom2.Plane as P on O.obsID = P.obsID
             where O.collection = '{collection}' and P.quality_flag = 'junk'
         """.replace('\n', ' ')
@@ -82,7 +87,7 @@ def query_collection(collection):
     print( f"Junk planes: {len(JUNK_PLANES_DF)}" )
 
     query_plane_artifact_types = f"""
-            select P.planeID, P.dataProductType,
+            select '{TYPE_TEXT}' as category, O.collection, P.planeID, P.dataProductType,
                 case when A.productType = 'science' then 1 end as science,
                 case when A.productType = 'calibration' then 1 end as calibration,
                 case when A.productType = 'weight' then 1 end as weight,
@@ -109,10 +114,7 @@ def write_no_planes(f, filename, collection, df):
         if len(df) > 0:
             message = f"List of {len(df)} NO_PLANES found"
             f.write(f"\n{message}\n")
-            f.write("category,collection,dataProductType,science,calibration,weight,noise,preview,thumbnail,auxiliary,info\n")
-        for row in df.iter_rows(named=True):
-            f.write(f"NO_PLANES,{collection},{row['observationID']},{row['maxLastModified']}\n")
-            f.flush()
+            df.write_csv(f)
     except Exception as e:
         print(f"Error writing results to {filename}: {e}")
         exit(1)
@@ -124,10 +126,7 @@ def write_no_artifacts(f, filename, collection, df):
         if len(df) > 0:
             message = f"List of {len(df)} NO_ARTIFACTS found"
             f.write(f"\n{message}\n")
-            f.write("category,collection,dataProductType,science,calibration,weight,noise,preview,thumbnail,auxiliary,info\n")
-        for row in df.iter_rows(named=True):
-            f.write(f"NO_ARTIFACTS,{collection},{row['observationID']},{row['maxLastModified']}\n")
-            f.flush()
+            df.write_csv(f)
     except Exception as e:
         print(f"Error writing results to {filename}: {e}")
         exit(1)
@@ -139,10 +138,19 @@ def write_profile(f, filename, collection, df):
         if len(df) > 0:
             message = f"List of {len(df)} TYPE combinations found"
             f.write(f"\n{message}\n")
-            f.write("category,collection,dataProductType,science,calibration,weight,noise,preview,thumbnail,auxiliary,info\n")
-        for row in df.iter_rows(named=True):
-            f.write(f"TYPE,{collection},{row['dataProductType']},{row['science']},{row['calibration']},{row['weight']},{row['noise']},{row['preview']},{row['thumbnail']},{row['auxiliary']},{row['info']}\n")
-            f.flush()
+            df.write_csv(f)
+    except Exception as e:
+        print(f"Error writing results to {filename}: {e}")
+        exit(1)
+        
+    return
+
+def write_csv(f, filename, text, df):
+    try:
+        if len(df) > 0:
+            message = f"List of {len(df)} {text} found"
+            f.write(f"\n{message}\n")
+            df.write_csv(f)
     except Exception as e:
         print(f"Error writing results to {filename}: {e}")
         exit(1)
@@ -151,8 +159,8 @@ def write_profile(f, filename, collection, df):
 
 ## Write the query results to the output file.
 def write_query_results(collection):
-    global AMS_QUERY_DURATION
     global PLANE_ARTIFACT_TYPES_DF
+    global DISTINCT_PLANE_ARTIFACT_TYPES_DF
     global NO_ARTIFACTS_DF
     global NO_PLANES_DF
     global JUNK_PLANES_DF
@@ -172,10 +180,13 @@ def write_query_results(collection):
             f.write(f"Observations with no associated planes: {len(NO_PLANES_DF)}\n")
             f.write(f"Planes flagged as junk: {len(JUNK_PLANES_DF)}\n")
             f.write(f"Planes with no artifacts: {len(NO_ARTIFACTS_DF)}\n")
+            f.write(f"Number of planes: {len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)}\n")
+            f.write(f"Number of artifacts: {len(PLANE_ARTIFACT_TYPES_DF)}\n")
 
-            write_no_planes( f, filename, collection, NO_PLANES_DF )
-            write_no_artifacts( f, filename, collection, NO_ARTIFACTS_DF )
-            write_profile( f, filename, collection, ALL_TYPES_DF )
+
+            write_csv( f, filename, NO_PLANE_TEXT, NO_PLANES_DF )
+            write_csv( f, filename, NO_ARTIFACT_TEXT, NO_ARTIFACTS_DF )
+            write_csv( f, filename, TYPE_TEXT, ALL_TYPES_DF )
 
             ## Finally, write the summary message
             write_end_time = datetime.now(timezone.utc)
@@ -183,15 +194,16 @@ def write_query_results(collection):
             processing_end_time = datetime.now(timezone.utc)
             processing_duration = processing_end_time - PROCESSING_START_TIME
             
-            message = f"summary,collection,processing_start_time,observations_no_planes,planes_no_artifacts,junk_planes,type_combinations,ams_query_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
+            message = f"summary,collection,processing_start_time,observations_no_planes,planes_no_artifacts,junk_planes,num_planes,num_artifacts,type_combinations,ams_query_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
             f.write(f"\n{message}\n")
-            message = f"SUMMARY,{collection},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')},{len(NO_PLANES_DF)},{len(NO_ARTIFACTS_DF)},{len(JUNK_PLANES_DF)},{len(ALL_TYPES_DF)},{AMS_QUERY_DURATION:.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
+            message = f"SUMMARY,{collection},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')},{len(NO_PLANES_DF)},{len(NO_ARTIFACTS_DF)},{len(JUNK_PLANES_DF)},{len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)},{len(PLANE_ARTIFACT_TYPES_DF)},{len(ALL_TYPES_DF)},{AMS_QUERY_DURATION:.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
             f.write(f"{message}\n")
             f.flush()
             print(message)
 
             ## Explicitly delete the dataframes to free up memory.
             del PLANE_ARTIFACT_TYPES_DF
+            del DISTINCT_PLANE_ARTIFACT_TYPES_DF
             del NO_ARTIFACTS_DF
             del NO_PLANES_DF
             del JUNK_PLANES_DF
@@ -204,10 +216,10 @@ def write_query_results(collection):
 
 ## Process the given collection by querying the ams service and writing the results to an output file.
 def process_collection(collection):
-    global PLANE_ARTIFACT_TYPES_DF, ALL_TYPES_DF
+    global PLANE_ARTIFACT_TYPES_DF, ALL_TYPES_DF, DISTINCT_PLANE_ARTIFACT_TYPES_DF
 
     ## Cast the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns to Int64 to allow aggregation
-    PLANE_ARTIFACT_TYPES_DF = PLANE_ARTIFACT_TYPES_DF .with_columns(
+    PLANE_ARTIFACT_TYPES_DF = PLANE_ARTIFACT_TYPES_DF.with_columns(
         pl.col("science").cast( pl.Int64 ),
         pl.col("calibration").cast( pl.Int64 ),
         pl.col("weight").cast( pl.Int64 ),
@@ -219,7 +231,7 @@ def process_collection(collection):
 )
 
     ## Merge rows by with the same collection, observationID, planeID, maxLastModified and set the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns to True if any one row in the plane is > 0.
-    DISTINCT_PLANE_ARTIFACT_TYPES_DF = PLANE_ARTIFACT_TYPES_DF.group_by( ["planeID", "dataProductType"] ).agg(
+    DISTINCT_PLANE_ARTIFACT_TYPES_DF = PLANE_ARTIFACT_TYPES_DF.group_by( ["category", "collection", "planeID", "dataProductType"] ).agg(
         [pl.col("science").min().alias("science"),
         pl.col("calibration").min().alias("calibration"),
         pl.col("weight").min().alias("weight"),
@@ -232,7 +244,7 @@ def process_collection(collection):
     print( f"All planes after merging artifacts: {len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)}" )
 
     ## List distinct dataProductTypes, auxiliary, calibration, info, noise, science, weight, preview, thumbnail
-    ALL_TYPES_DF = DISTINCT_PLANE_ARTIFACT_TYPES_DF.select( ["dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] ).unique().sort( ["dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] )
+    ALL_TYPES_DF = DISTINCT_PLANE_ARTIFACT_TYPES_DF.select( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] ).unique().sort( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] )
     print( f"Distinct combinations of plane and artifact types:\n{ALL_TYPES_DF}" )
 
     return
