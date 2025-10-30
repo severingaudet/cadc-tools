@@ -105,7 +105,7 @@ def query_collection(collection):
 
     end_time = datetime.now(timezone.utc)
     duration = end_time - start_time
-    AMS_QUERY_DURATION += duration.total_seconds()
+    AMS_QUERY_DURATION = duration.total_seconds()
 
     return
 
@@ -245,7 +245,7 @@ def process_collection(collection):
 
     ## List distinct dataProductTypes, auxiliary, calibration, info, noise, science, weight, preview, thumbnail
     ALL_TYPES_DF = DISTINCT_PLANE_ARTIFACT_TYPES_DF.select( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] ).unique().sort( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] )
-    print( f"Distinct combinations of plane and artifact types:\n{ALL_TYPES_DF}" )
+    print( f"Number of distinct combinations of plane and artifact types: {len(ALL_TYPES_DF)}" )
 
     return
 
@@ -295,6 +295,7 @@ def read_configurations():
 ## The script will exit with a status code of 0 if successful, or 255 if an error occurs.
 
 if __name__ == "__main__":
+    global PROCESSING_START_TIME
 
     ## Check if the certificate file exists.
     if not os.path.exists(CERT_FILENAME):
@@ -339,6 +340,7 @@ if __name__ == "__main__":
     ## Now loop though the list of collections.
     for collection in collection_list:
         print(f"Processing collection {collection}.")
+        PROCESSING_START_TIME = datetime.now(timezone.utc)
         query_collection(collection)
         process_collection(collection)
         write_query_results(collection)
