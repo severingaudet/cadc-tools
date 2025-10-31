@@ -295,7 +295,6 @@ def read_configurations():
 ## The script will exit with a status code of 0 if successful, or 255 if an error occurs.
 
 if __name__ == "__main__":
-    global PROCESSING_START_TIME
 
     ## Check if the certificate file exists.
     if not os.path.exists(CERT_FILENAME):
