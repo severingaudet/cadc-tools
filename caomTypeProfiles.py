@@ -230,7 +230,7 @@ def process_collection(collection):
         pl.col("info").cast( pl.Int64 )
 )
 
-    ## Merge rows by with the same collection, observationID, planeID, maxLastModified and set the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns to True if any one row in the plane is > 0.
+    ## Merge rows by with the same collection, observationID, planeID, maxLastModified and set the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns to 1 if any one row in the plane is > 0.
     DISTINCT_PLANE_ARTIFACT_TYPES_DF = PLANE_ARTIFACT_TYPES_DF.group_by( ["category", "collection", "planeID", "dataProductType"] ).agg(
         [pl.col("science").min().alias("science"),
         pl.col("calibration").min().alias("calibration"),
@@ -244,7 +244,9 @@ def process_collection(collection):
     print( f"All planes after merging artifacts: {len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)}" )
 
     ## List distinct dataProductTypes, auxiliary, calibration, info, noise, science, weight, preview, thumbnail
-    ALL_TYPES_DF = DISTINCT_PLANE_ARTIFACT_TYPES_DF.select( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] ).unique().sort( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] )
+    ALL_TYPES_DF = DISTINCT_PLANE_ARTIFACT_TYPES_DF.group_by( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] ).agg(
+        pl.len().alias("num_planes")
+    ).sort( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] )
     print( f"Number of distinct combinations of plane and artifact types: {len(ALL_TYPES_DF)}" )
 
     return
@@ -301,7 +303,7 @@ if __name__ == "__main__":
         print(f"Certificate file {CERT_FILENAME} does not exist. Please check the path.")
         exit(1)
     
-    ## Determine where the siMonitoring directory is located and change to that directory.
+    ## Determine where the collection monitoring directory is located and change to that directory.
     if os.path.isdir("/Users/gaudet_1/work/collectionAuditing"):
         os.chdir("/Users/gaudet_1/work/collectionAuditing")
     elif os.path.isdir("/arc/projects/CADC/collectionAuditing"):
