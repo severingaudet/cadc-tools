@@ -6,8 +6,8 @@ import os
 import sys
 
 CERT_FILENAME = f"{Path.home()}/.ssl/cadcproxy.pem"
-OUTPUT_DIRECTORY = "caomPreviewDiff_reports"
-OUTPUT_FILENAME_ROOT = "caomPreviewDiff"
+OUTPUT_DIRECTORY = "previewDiff_reports"
+OUTPUT_FILENAME_ROOT = "previewDiff"
 
 MAPPINGS_CONFIG = pl.DataFrame()
 COLLECTIONS_CONFIG = pl.DataFrame()
@@ -144,6 +144,9 @@ def find_inconsistent_planes(planes_df, instrument_dataProductType_df, constrain
     consistent_instrument_dataProductType_df = consistent_planes_df.group_by(["collection", "instrument_name", "dataProductType", "science", "calibration"]    
         ).agg( pl.len().alias("num_planes")
         ).sort( ["collection", "instrument_name", "dataProductType", "science", "calibration"] )
+    ## Add a category column at as the first column of the dataframe and set the values of the category column to CONSISTENT
+    category_column = pl.Series("category", ["CONSISTENT"] * len(consistent_instrument_dataProductType_df))
+    consistent_instrument_dataProductType_df.insert_column(0, category_column)
 
 #    print( f"Number of instrument_name, dataProductType, science, calibration combinations with {constraint1}: {len(consistent_instrument_dataProductType_df)}" )
 #    print( f"consistent_instrument_dataProductType_df: {consistent_instrument_dataProductType_df}" )
@@ -166,7 +169,7 @@ def find_inconsistent_planes(planes_df, instrument_dataProductType_df, constrain
             on=["instrument_name", "dataProductType", "science", "calibration"],
             how="inner"
         ).filter(constraint2
-        ).select(["collection", "observationID", "instrument_name", "planeID", "dataProductType", "maxLastModified", "preview", "thumbnail", "science", "calibration"]
+        ).select(["collection", "observationID", "instrument_name", "planeID", "dataProductType", "maxLastModified", "science", "calibration"]
         ).sort( ["collection", "observationID", "instrument_name", "planeID", "dataProductType"] )
 #        print( f"Number of inconsistent planes : {len(inconsistent_planes_df)}" )
 
@@ -184,6 +187,8 @@ def find_inconsistent_planes(planes_df, instrument_dataProductType_df, constrain
 
 #        print( f"Initial instrument_name, dataProductType, science, calibration combinations to process: {len(instrument_dataProductType_df)}" )
 #        print( f"instrument_dataProductType_df:\n{instrument_dataProductType_df}" )
+#        print( f"Number of consistent instrument_name, dataProductType, science, calibration combinations: {len(consistent_instrument_dataProductType_df)}" )
+#        print( f"consistent_instrument_dataProductType_df:\n{consistent_instrument_dataProductType_df}" )
 
         ## Remove the instrument_name, dataProductType combination from the instrument_dataProductType_df
         instrument_dataProductType_df = instrument_dataProductType_df.join(
@@ -239,7 +244,8 @@ def process_collection(collection, collection_start_time, query_duration, plane_
         pl.col("thumbnail").cast( pl.Int64 ),
         pl.col("science").cast( pl.Int64 ),
         pl.col("calibration").cast( pl.Int64 )
-)
+        )
+
     ## Merge rows by with the same collection, observationID, planeID, maxLastModified and set the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns to 1 if any one row in the plane is > 0.
     planes_df = plane_artifact_type_df.group_by( ["collection", "observationID", "instrument_name", "planeID", "dataProductType", "maxLastModified"] ).agg(
         [pl.col("preview").min().alias("preview"),
@@ -247,7 +253,17 @@ def process_collection(collection, collection_start_time, query_duration, plane_
         pl.col("science").min().alias("science"),
         pl.col("calibration").min().alias("calibration")]
     ).sort( ["collection", "observationID", "instrument_name", "planeID", "dataProductType", "maxLastModified"] )
-    planes_df = planes_df.fill_null(0)
+    
+    ## Next, set nulls to "None" for instrument_name and dataProductType and science, calibration, preview and thumbnail to 0.
+    #  This will allow joins and aggregations to work correctly.
+    planes_df = planes_df.with_columns(
+        pl.col("instrument_name").fill_null("None"),
+        pl.col("dataProductType").fill_null("None"),
+        pl.col("science").fill_null(0),
+        pl.col("calibration").fill_null(0),
+        pl.col("preview").fill_null(0),
+        pl.col("thumbnail").fill_null(0)
+    )
 #    print( f"Distinct planes after artifact aggregation: {len(planes_df)}" )
 
     ## Create a dataframe of unique instrument_name, dataProductType combinations having either a preview or a thumbnail artifact.
