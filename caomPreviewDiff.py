@@ -397,6 +397,10 @@ if __name__ == "__main__":
     ## Reaed all configuration files into global dataframes.
     read_configurations()
 
+    ## Remove ams_maq collections from the collections configuration dataframe.
+    COLLECTIONS_CONFIG = COLLECTIONS_CONFIG.filter(pl.col('ams_site') != 'ams_maq')
+    print(f"Warning: MAQ collections are not supported and will be skipped.")
+
     ## Create the list of collections to verify, either from the list provided on the command line or from the configuration file.
     collection_list = validate_collection_list(sys.argv[1:])
 
