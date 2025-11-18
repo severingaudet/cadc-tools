@@ -24,7 +24,7 @@ def format_duration(duration):
     return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 ## Query the ams repository service for the specified collection.
-def query_ams_service(ams_url, query):
+def query_ams_service(ams_url, query, schema):
     ams_url_sync = ams_url + "/sync"
     data_list = {"LANG": "ADQL", "RESPONSEFORMAT": "CSV", "QUERY": query}
 
@@ -33,7 +33,7 @@ def query_ams_service(ams_url, query):
         with requests.post(ams_url_sync, data=data_list, allow_redirects=True, cert=CERT_FILENAME, stream=True, timeout=7200) as response:
             response.raise_for_status()  # Raise an error for bad status codes
             # Read the raw CSV response into a Polars DataFrame
-            query_result = pl.read_csv(response.raw)
+            query_result = pl.read_csv(response.raw, schema_overrides=schema)
     except requests.exceptions.HTTPError as e:
         print(f"{datetime.now(timezone.utc)} HTTP Error: {e}")
         exit(1)
@@ -56,7 +56,8 @@ def query_collection(collection):
         exit(1)
     ams_url = site_row['site_url'][0]
 
-    query_plane_artifact_types = f"""
+    ## Create query string
+    plane_artifact_type_query = f"""
             select O.collection, O.observationID, O.instrument_name, P.planeID, P.dataProductType, P.maxLastModified,
                 case when A.productType = 'preview' then 1 end as preview,
                 case when A.productType = 'thumbnail' then 1 end as thumbnail,
@@ -65,12 +66,26 @@ def query_collection(collection):
             from caom2.Observation as O join caom2.Plane as P on O.obsID = P.obsID join caom2.Artifact as A on P.planeID = A.planeID
             where O.collection = '{collection}' and (P.quality_flag is null or P.quality_flag != 'junk')
         """.replace('\n', ' ')
-    plane_artifact_type_df = query_ams_service(ams_url, query_plane_artifact_types) 
+    
+    ## Define the schema for the dataframe to be returned.
+    plane_artifact_type_schema = {
+        "collection": str,
+        "observationID": str,
+        "instrument_name": str,
+        "planeID": str,
+        "dataProductType": str,
+        "maxLastModified": str,
+        "preview": pl.Int64,
+        "thumbnail": pl.Int64,
+        "science": pl.Int64,
+        "calibration": pl.Int64
+    }
+
+    ## Query the ams service for the collection.
+    plane_artifact_type_df = query_ams_service(ams_url, plane_artifact_type_query, plane_artifact_type_schema) 
 
     end_time = datetime.now(timezone.utc)
     duration = end_time - start_time
-
-#    print( f"Number of artifacts: {len(plane_artifact_type_df)}" )
 
     return plane_artifact_type_df, duration
 
@@ -237,15 +252,6 @@ def process_collection(collection, collection_start_time, query_duration, plane_
     
     processing_start_time = datetime.now(timezone.utc)
     
-    ## Merge the artifact row by plane to prepare for analysis. First cast the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns
-    ## to Int64 to allow aggregation
-    plane_artifact_type_df = plane_artifact_type_df.with_columns(
-        pl.col("preview").cast( pl.Int64 ),
-        pl.col("thumbnail").cast( pl.Int64 ),
-        pl.col("science").cast( pl.Int64 ),
-        pl.col("calibration").cast( pl.Int64 )
-        )
-
     ## Merge rows by with the same collection, observationID, planeID, maxLastModified and set the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns to 1 if any one row in the plane is > 0.
     planes_df = plane_artifact_type_df.group_by( ["collection", "observationID", "instrument_name", "planeID", "dataProductType", "maxLastModified"] ).agg(
         [pl.col("preview").min().alias("preview"),
