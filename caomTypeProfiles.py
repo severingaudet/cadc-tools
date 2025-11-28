@@ -8,8 +8,9 @@ import sys
 CERT_FILENAME = f"{Path.home()}/.ssl/cadcproxy.pem"
 OUTPUT_DIRECTORY = "typeProfiles_reports"
 OUTPUT_FILENAME_ROOT = "typeProfiles"
-AMS_QUERY_DURATION = 0
-PROCESSING_START_TIME = datetime.now(timezone.utc)
+QUERY_DURATION = 0
+PROCESS_RESULTS_DURATION = 0
+START_TIME = datetime.now(timezone.utc)
 
 COLLECTIONS_CONFIG = pl.DataFrame()
 SITES_CONFIG = pl.DataFrame()
@@ -24,6 +25,14 @@ JUNK_PLANES_DF = pl.DataFrame()
 NO_PLANE_TEXT = "NO_PLANES"
 NO_ARTIFACT_TEXT = "NO_ARTIFACTS"
 TYPE_TEXT = "TYPE"
+
+## Format a duration as HH:MM:SS
+def format_duration(duration):
+    total_seconds = int(duration.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 ## Query the ams repository service for the specified collection.
 def query_ams_service(ams_url, query):
@@ -46,7 +55,7 @@ def query_ams_service(ams_url, query):
     return query_result
 
 def query_collection(collection):
-    global AMS_QUERY_DURATION
+    global QUERY_DURATION
     global PLANE_ARTIFACT_TYPES_DF
     global NO_ARTIFACTS_DF
     global NO_PLANES_DF
@@ -87,15 +96,24 @@ def query_collection(collection):
     print( f"Junk planes: {len(JUNK_PLANES_DF)}" )
 
     query_plane_artifact_types = f"""
-            select '{TYPE_TEXT}' as category, O.collection, P.planeID, P.dataProductType,
+            select '{TYPE_TEXT}' as category, O.collection, O.instrument_name, O.intent, P.planeID, P.dataProductType,
+                case when A.productType = 'this' then 1 end as this,
                 case when A.productType = 'science' then 1 end as science,
                 case when A.productType = 'calibration' then 1 end as calibration,
-                case when A.productType = 'weight' then 1 end as weight,
-                case when A.productType = 'noise' then 1 end as noise,
                 case when A.productType = 'preview' then 1 end as preview,
                 case when A.productType = 'thumbnail' then 1 end as thumbnail,
                 case when A.productType = 'auxiliary' then 1 end as auxiliary,
-                case when A.productType = 'info' then 1 end as info
+                case when A.productType = 'bias' then 1 end as bias,
+                case when A.productType = 'coderived' then 1 end as coderived,
+                case when A.productType = 'dark' then 1 end as dark,
+                case when A.productType = 'documentation' then 1 end as documentation,
+                case when A.productType = 'error' then 1 end as error,
+                case when A.productType = 'flat' then 1 end as flat,
+                case when A.productType = 'info' then 1 end as info,
+                case when A.productType = 'noise' then 1 end as noise,
+                case when A.productType = 'preview-image' then 1 end as preview_image,
+                case when A.productType = 'preview-plot' then 1 end as preview_plot,
+                case when A.productType = 'weight' then 1 end as weight
             from caom2.Observation as O join caom2.Plane as P on O.obsID = P.obsID join caom2.Artifact as A on P.planeID = A.planeID
             where O.collection = '{collection}' and (P.quality_flag is null or P.quality_flag != 'junk')
         """.replace('\n', ' ')
@@ -104,8 +122,7 @@ def query_collection(collection):
     print( f"Number of artifacts: {len(PLANE_ARTIFACT_TYPES_DF)}" )
 
     end_time = datetime.now(timezone.utc)
-    duration = end_time - start_time
-    AMS_QUERY_DURATION = duration.total_seconds()
+    QUERY_DURATION = end_time - start_time
 
     return
 
@@ -145,12 +162,12 @@ def write_profile(f, filename, collection, df):
         
     return
 
-def write_csv(f, filename, text, df):
+def write_tsv(f, filename, text, df):
     try:
         if len(df) > 0:
             message = f"List of {len(df)} {text} found"
             f.write(f"\n{message}\n")
-            df.write_csv(f)
+            df.write_csv(f, separator='\t')
     except Exception as e:
         print(f"Error writing results to {filename}: {e}")
         exit(1)
@@ -158,7 +175,7 @@ def write_csv(f, filename, text, df):
     return
 
 ## Write the query results to the output file.
-def write_query_results(collection):
+def write_processing_results(collection):
     global PLANE_ARTIFACT_TYPES_DF
     global DISTINCT_PLANE_ARTIFACT_TYPES_DF
     global NO_ARTIFACTS_DF
@@ -166,37 +183,38 @@ def write_query_results(collection):
     global JUNK_PLANES_DF
     global ALL_TYPES_DF
 
-    filename = f"{OUTPUT_FILENAME_ROOT}_{collection}.csv"
+    filename = f"{OUTPUT_FILENAME_ROOT}_{collection}.tsv"
     print(f"Writing query results to {filename}.")
     try:
         with open(filename, 'w') as f:
             write_start_time = datetime.now(timezone.utc)
             f.write(f"Query results for collection {collection}\n")
             f.write(f"\n")
-            f.write(f"Processing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')} UTC\n")
-            f.write(f"Total AMS query time: {AMS_QUERY_DURATION:.2f} seconds\n")
+            f.write(f"Start time\t{START_TIME.strftime('%Y-%m-%dT%H:%M:%S')} UTC\n")
+            f.write(f"AMS query duration\t{format_duration(QUERY_DURATION)}\n")
+            f.write(f"Process results duration\t{format_duration(PROCESS_RESULTS_DURATION)}\n")
             f.write(f"\n")
 
-            f.write(f"Observations with no associated planes: {len(NO_PLANES_DF)}\n")
-            f.write(f"Planes flagged as junk: {len(JUNK_PLANES_DF)}\n")
-            f.write(f"Planes with no artifacts: {len(NO_ARTIFACTS_DF)}\n")
-            f.write(f"Number of planes: {len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)}\n")
-            f.write(f"Number of artifacts: {len(PLANE_ARTIFACT_TYPES_DF)}\n")
+            f.write(f"Observations with no associated planes\t{len(NO_PLANES_DF)}\n")
+            f.write(f"Planes flagged as junk\t{len(JUNK_PLANES_DF)}\n")
+            f.write(f"Planes with no artifacts\t{len(NO_ARTIFACTS_DF)}\n")
+            f.write(f"Number of planes\t{len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)}\n")
+            f.write(f"Number of artifacts\t{len(PLANE_ARTIFACT_TYPES_DF)}\n")
 
 
-            write_csv( f, filename, NO_PLANE_TEXT, NO_PLANES_DF )
-            write_csv( f, filename, NO_ARTIFACT_TEXT, NO_ARTIFACTS_DF )
-            write_csv( f, filename, TYPE_TEXT, ALL_TYPES_DF )
+            write_tsv( f, filename, NO_PLANE_TEXT, NO_PLANES_DF )
+            write_tsv( f, filename, NO_ARTIFACT_TEXT, NO_ARTIFACTS_DF )
+            write_tsv( f, filename, TYPE_TEXT, ALL_TYPES_DF )
 
             ## Finally, write the summary message
             write_end_time = datetime.now(timezone.utc)
             write_duration = write_end_time - write_start_time
-            processing_end_time = datetime.now(timezone.utc)
-            processing_duration = processing_end_time - PROCESSING_START_TIME
+            end_time = datetime.now(timezone.utc)
+            total_duration = end_time - START_TIME
             
-            message = f"summary,collection,processing_start_time,observations_no_planes,planes_no_artifacts,junk_planes,num_planes,num_artifacts,type_combinations,ams_query_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
+            message = f"category\tcollection\tstart time\tobservations with no planes\tplanes with no artifacts\tjunk planes\tnum planes for profile\tnum artifacts\tnum of profile combinations\tquery duration\tprocessing results duration\twrite duration\ttotal duration\tend time"
             f.write(f"\n{message}\n")
-            message = f"SUMMARY,{collection},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')},{len(NO_PLANES_DF)},{len(NO_ARTIFACTS_DF)},{len(JUNK_PLANES_DF)},{len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)},{len(PLANE_ARTIFACT_TYPES_DF)},{len(ALL_TYPES_DF)},{AMS_QUERY_DURATION:.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
+            message = f"SUMMARY\t{collection}\t{START_TIME.strftime('%Y-%m-%dT%H:%M:%S')}\t{len(NO_PLANES_DF)}\t{len(NO_ARTIFACTS_DF)}\t{len(JUNK_PLANES_DF)}\t{len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)}\t{len(PLANE_ARTIFACT_TYPES_DF)}\t{len(ALL_TYPES_DF)}\t{format_duration(QUERY_DURATION)}\t{format_duration(PROCESS_RESULTS_DURATION)}\t{format_duration(write_duration)}\t{format_duration(total_duration)}\t{end_time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
             f.write(f"{message}\n")
             f.flush()
             print(message)
@@ -214,40 +232,73 @@ def write_query_results(collection):
     
     return
 
-## Process the given collection by querying the ams service and writing the results to an output file.
-def process_collection(collection):
-    global PLANE_ARTIFACT_TYPES_DF, ALL_TYPES_DF, DISTINCT_PLANE_ARTIFACT_TYPES_DF
+## Process the query results to create the type profile of the collection.
+def process_query_results():
+    global PLANE_ARTIFACT_TYPES_DF, ALL_TYPES_DF, DISTINCT_PLANE_ARTIFACT_TYPES_DF, PROCESS_RESULTS_DURATION
 
-    ## Cast the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns to Int64 to allow aggregation
+    start_time = datetime.now(timezone.utc)
+
+    ## Cast the productType columns to Int64 to allow aggregation
     PLANE_ARTIFACT_TYPES_DF = PLANE_ARTIFACT_TYPES_DF.with_columns(
+        pl.col("this").cast( pl.Int64 ),
         pl.col("science").cast( pl.Int64 ),
         pl.col("calibration").cast( pl.Int64 ),
-        pl.col("weight").cast( pl.Int64 ),
-        pl.col("noise").cast( pl.Int64 ),
         pl.col("preview").cast( pl.Int64 ),
         pl.col("thumbnail").cast( pl.Int64 ),
         pl.col("auxiliary").cast( pl.Int64 ),
-        pl.col("info").cast( pl.Int64 )
+        pl.col("bias").cast( pl.Int64 ),
+        pl.col("coderived").cast( pl.Int64 ),
+        pl.col("dark").cast( pl.Int64 ),
+        pl.col("documentation").cast( pl.Int64 ),
+        pl.col("error").cast( pl.Int64 ),
+        pl.col("flat").cast( pl.Int64 ),
+        pl.col("info").cast( pl.Int64 ),
+        pl.col("noise").cast( pl.Int64 ),
+        pl.col("preview_image").cast( pl.Int64 ),
+        pl.col("preview_plot").cast( pl.Int64 ),
+        pl.col("weight").cast( pl.Int64 )
 )
 
-    ## Merge rows by with the same collection, observationID, planeID, maxLastModified and set the auxiliary, calibration, info, noise, preview, science, thumbnail, weight columns to 1 if any one row in the plane is > 0.
-    DISTINCT_PLANE_ARTIFACT_TYPES_DF = PLANE_ARTIFACT_TYPES_DF.group_by( ["category", "collection", "planeID", "dataProductType"] ).agg(
-        [pl.col("science").min().alias("science"),
+    ## Merge rows by with the same collection, observationID, planeID, maxLastModified and set the productType columns to 1 if any one row in the plane is > 0.
+    DISTINCT_PLANE_ARTIFACT_TYPES_DF = PLANE_ARTIFACT_TYPES_DF.group_by( ["category", "collection", "instrument_name", "intent", "planeID", "dataProductType"] ).agg(
+        [pl.col("this").min().alias("this"),
+        pl.col("science").min().alias("science"),
         pl.col("calibration").min().alias("calibration"),
-        pl.col("weight").min().alias("weight"),
-        pl.col("noise").min().alias("noise"),
         pl.col("preview").min().alias("preview"),
         pl.col("thumbnail").min().alias("thumbnail"),
         pl.col("auxiliary").min().alias("auxiliary"),
-        pl.col("info").min().alias("info")]
+        pl.col("bias").min().alias("bias"),
+        pl.col("coderived").min().alias("coderived"),
+        pl.col("dark").min().alias("dark"),
+        pl.col("documentation").min().alias("documentation"),
+        pl.col("error").min().alias("error"),
+        pl.col("flat").min().alias("flat"),
+        pl.col("info").min().alias("info"),
+        pl.col("noise").min().alias("noise"),
+        pl.col("preview_image").min().alias("preview_image"),
+        pl.col("preview_plot").min().alias("preview_plot"),
+        pl.col("weight").min().alias("weight")]
     )
     print( f"All planes after merging artifacts: {len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)}" )
 
-    ## List distinct dataProductTypes, auxiliary, calibration, info, noise, science, weight, preview, thumbnail
-    ALL_TYPES_DF = DISTINCT_PLANE_ARTIFACT_TYPES_DF.group_by( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] ).agg(
-        pl.len().alias("num_planes")
-    ).sort( ["category", "collection", "dataProductType", "science", "calibration", "weight", "noise", "preview", "thumbnail", "auxiliary", "info"] )
+    ## List distinct instrument_name, intent, dataProductTypes and proeductType combinations. Insert the number of planes for each combination into the dataframe after the dataProductType column.
+    ALL_TYPES_DF = DISTINCT_PLANE_ARTIFACT_TYPES_DF.group_by(
+        ["category", "collection", "instrument_name", "intent", "dataProductType", "this", "science", "calibration", "preview", "thumbnail", "auxiliary", "bias", "coderived",
+            "dark", "documentation", "error", "flat", "info", "noise", "preview_image", "preview_plot", "weight"]
+        ).agg(pl.len().alias("num_planes")
+    ).sort(
+        by=["category", "collection", "instrument_name", "intent", "dataProductType", "this", "science", "calibration", "preview", "thumbnail", "auxiliary", "bias", "coderived",
+            "dark", "documentation", "error", "flat", "info", "noise", "preview_image", "preview_plot", "weight"],
+        descending=[False, False, False, True, False, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True]
+    ).select([
+        "category", "collection", "instrument_name", "intent", "dataProductType", "num_planes",
+        "this", "science", "calibration", "preview", "thumbnail", "auxiliary", "bias", "coderived",
+        "dark", "documentation", "error", "flat", "info", "noise", "preview_image", "preview_plot", "weight"
+    ])
     print( f"Number of distinct combinations of plane and artifact types: {len(ALL_TYPES_DF)}" )
+
+    end_time = datetime.now(timezone.utc)
+    PROCESS_RESULTS_DURATION = end_time - start_time
 
     return
 
@@ -341,9 +392,9 @@ if __name__ == "__main__":
     ## Now loop though the list of collections.
     for collection in collection_list:
         print(f"Processing collection {collection}.")
-        PROCESSING_START_TIME = datetime.now(timezone.utc)
+        START_TIME = datetime.now(timezone.utc)
         query_collection(collection)
-        process_collection(collection)
-        write_query_results(collection)
+        process_query_results()
+        write_processing_results(collection)
     print("All collections processed.")    
     exit(0)
