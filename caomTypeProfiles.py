@@ -131,7 +131,7 @@ def write_no_planes(f, filename, collection, df):
         if len(df) > 0:
             message = f"List of {len(df)} NO_PLANES found"
             f.write(f"\n{message}\n")
-            df.write_csv(f)
+            df.write_csv(f, separator='\t')
     except Exception as e:
         print(f"Error writing results to {filename}: {e}")
         exit(1)
@@ -143,7 +143,7 @@ def write_no_artifacts(f, filename, collection, df):
         if len(df) > 0:
             message = f"List of {len(df)} NO_ARTIFACTS found"
             f.write(f"\n{message}\n")
-            df.write_csv(f)
+            df.write_csv(f, separator='\t')
     except Exception as e:
         print(f"Error writing results to {filename}: {e}")
         exit(1)
@@ -155,7 +155,7 @@ def write_profile(f, filename, collection, df):
         if len(df) > 0:
             message = f"List of {len(df)} TYPE combinations found"
             f.write(f"\n{message}\n")
-            df.write_csv(f)
+            df.write_csv(f, separator='\t')
     except Exception as e:
         print(f"Error writing results to {filename}: {e}")
         exit(1)
@@ -312,7 +312,7 @@ def validate_collection_list(collection_list):
         ## Verify the collections provided as arguments to the script are valid.
         for collection in collection_list:
             row = COLLECTIONS_CONFIG.filter(pl.col('collection') == collection)
-            if row.is_empty() or not row['in_si'][0]:
+            if row.is_empty():
                 print(f"Collection {collection} not found in collections configuration file.")
                 exit(1)    
     
@@ -324,9 +324,9 @@ def read_configurations():
     global COLLECTIONS_CONFIG, SITES_CONFIG
 
     ## Read static configuration file for mapping collections to AMS sites.
-    ## This file must contain the columns collection, in_si and ams_site.
+    ## This file must contain the columns collection and ams_site.
     try:
-        COLLECTIONS_CONFIG = pl.read_csv("config/caomCollections.csv")
+        COLLECTIONS_CONFIG = pl.read_csv("config/caomCollections.tsv", separator='\t')
     except FileNotFoundError as e:
         print(f"Error reading collections file: {e}")
         exit(1)
@@ -334,7 +334,7 @@ def read_configurations():
     ## Read static configuration file for mapping AMS sites to URLs.
     ## This file must contain the columns site_name and site_url.
     try:
-        SITES_CONFIG = pl.read_csv("config/caomSites.csv")
+        SITES_CONFIG = pl.read_csv("config/caomSites.tsv", separator='\t')
     except FileNotFoundError as e:
         print(f"Error reading sites file: {e}")
         exit(1)
