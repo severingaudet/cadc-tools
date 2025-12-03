@@ -317,6 +317,8 @@ def validate_collection_list(collection_list):
                 exit(1)    
     
     print("Collections to be processed: ", end="")
+    print(*collection_list)
+
     return collection_list
 
 ## Read the configuration files into global dataframes.
