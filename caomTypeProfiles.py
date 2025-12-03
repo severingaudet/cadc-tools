@@ -316,7 +316,7 @@ def validate_collection_list(collection_list):
                 print(f"Collection {collection} not found in collections configuration file.")
                 exit(1)    
     
-    print(f"Collections to be processed: {collection_list}.")
+    print("Collections to be processed: ", end="")
     return collection_list
 
 ## Read the configuration files into global dataframes.
