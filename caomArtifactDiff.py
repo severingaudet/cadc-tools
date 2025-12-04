@@ -220,7 +220,7 @@ def compare_results(collections, si_namespaces, caom_query_result, si_query_resu
     try:
         with open(filename, 'w') as f:
             write_start_time = datetime.now(timezone.utc)
-            f.write(f"Result for collection(s) {collections.replace(MULTI_VALUED_SEPARATOR, " "}\n")
+            f.write(f"Result for collection(s) {collections.replace(MULTI_VALUED_SEPARATOR, " ")}\n")
             f.write(f"\n")
             f.write(f"Start time UTC\t{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')}\n")
             f.write(f"\n")
@@ -231,7 +231,7 @@ def compare_results(collections, si_namespaces, caom_query_result, si_query_resu
             f.write(f"\tNum files\tSize of data in bytes\n")
             f.write(f"In CAOM\t{len(caom_query_result)}\t{caom_query_result.estimated_size()}\n")
             f.write(f"In SI\t{len(si_query_result)}\t{si_query_result.estimated_size()}\n")
-            f.write(f"Files and dataframe size for consistent files\t{num_consistent_files}\t{size_consistent_files}\n")
+            f.write(f"Consistent files\t{num_consistent_files}\t{size_consistent_files}\n")
             f.write(f"In CAOM and not in SI\t{len(missing_in_si)}\t{missing_in_si.estimated_size()}\n")
             f.write(f"In SI and not in CAOM\t{len(missing_in_caom)}\t{missing_in_caom.estimated_size()}\n")
             f.write(f"Different checksums\t{len(diff_checksums)}\t{diff_checksums.estimated_size()}\n")
