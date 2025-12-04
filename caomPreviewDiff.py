@@ -162,7 +162,7 @@ def find_inconsistent_planes(planes_df, instrument_intent_dataProductType_df, co
 #    print( f"Number of consistent planes: {consistent_instrument_intent_dataProductType_df['num_planes'].sum()}" )
 #    print( f"Number of consistent planes: {len(consistent_planes_df)}" )
     
-    ## If length of constrainted_instrument_intent_dataProductType_df is non-zero, add a category column and then find all planes with the same 
+    ## If length of constrainted_instrument_intent_dataProductType_df is non-zero, find all planes with the same 
     ## combination of instrument_name, dataProductType from the instrument_intent_dataProductType_df
     if len(consistent_instrument_intent_dataProductType_df) > 0:
         ## Remove the consistent planes from the planes_df to find inconsistent planes.
