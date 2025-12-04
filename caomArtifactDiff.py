@@ -18,6 +18,22 @@ SI_QUERY_DURATION = 0
 MULTI_VALUED_SEPARATOR = '_'
 PROCESSING_START_TIME = datetime.now(timezone.utc)
 
+## Format a duration as HH:MM:SS
+def format_duration(duration):
+    total_seconds = int(duration.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+## Formate a duration in seconds as HH:MM:SS
+def format_duration_in_seconds(seconds):
+    total_seconds = int(seconds)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    return f"{hours:02}:{minutes:02}:{seconds:02}"
+
 ## Execute the query as a sync call to the site URL, requesting CSV output as this is the most efficient
 ## way to get the query output which is then converted to a POLARS dataframe.
 
@@ -96,44 +112,23 @@ def query_caom_service(collection, si_namespace):
 
     return service_query_result
 
-## Write missing files to the output file. 
+## Write inconsistent files to the output file. 
 
-def write_missing_files(f, filename, text, missing_files):
+def write_files(f, filename, text, files_df):
     try:
-        if len(missing_files) > 0:
-            message = f"List of {len(missing_files)} {text} files"
-            f.write(f"\n{message}\n")
-            f.write("category,uri,lastModified\n")
-            for row in missing_files.iter_rows(named=True):
-                f.write(f"{text},{row['uri']},{row['lastModified']}\n")
-            f.flush()
+        message = f"Number of {text} files\t{len(files_df)}"
+        f.write(f"\n{message}\n")
+        if len(files_df) > 0:
+            files_df.write_csv(f, include_header=True, separator='\t')
     except Exception as e:
         print(f"Error writing comparison results to {filename}: {e}")
         exit(1)
         
     return
-
-## Write the inconsistent files to the output file. This is done in a separate function to avoid code duplication.
-
-def write_inconsistent_files(f, filename, text, inconsistent_files):
-    try:
-        if len(inconsistent_files) > 0:
-            message = f"List of {len(inconsistent_files)} {text} files"
-            f.write(f"\n{message}\n")
-            f.write("category,uri,contentCheckSum_caom,contentCheckSum_si,contentLength_caom,contentLength_si,contentType_caom,contentType_si,lastModified_caom,lastModified_si\n")
-            for row in inconsistent_files.iter_rows(named=True):
-                f.write(f"{text},{row['uri']},{row['contentCheckSum']},{row['contentCheckSum_si']},{row['contentLength']},{row['contentLength_si']},{row['contentType']},{row['contentType_si']},{row['lastModified']},{row['lastModified_si']}\n")
-            f.flush()
-    except Exception as e:
-        print(f"Error writing comparison results to {filename}: {e}")
-        exit(1)
-        
-    return
-
 
 ## Given the results from CAOM and SI, compare them and write the differences to a CSV file.
 
-def compare_results(collections, caom_query_result, si_query_result, filename):
+def compare_results(collections, si_namespaces, caom_query_result, si_query_result, filename):
 
     cmp_start_time = datetime.now(timezone.utc)
 
@@ -151,30 +146,44 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
     del consistent_files
 
    ## create a new dataframe that contains the uri and the lastModified value of rows of uri's that are in CAOM but not in SI.
+   ## If more than 0 rows, add a first column with the text MISSING_IN_SI.
     missing_in_si = pl.DataFrame()
     missing_in_si = caom_query_result.join(
         si_query_result, on='uri', how='anti'
     ).select(
         pl.col('uri'), pl.col('lastModified')
     ).sort('uri')
+    if (len(missing_in_si) > 0):
+        missing_in_si = missing_in_si.with_columns(pl.lit(collections).alias("collection")).select(['collection'] + missing_in_si.columns)
+        missing_in_si = missing_in_si.with_columns(pl.lit("MISSING_IN_SI").alias("category")).select(['category'] + missing_in_si.columns)
 
     ## create a new dataframe that contains the uri and lastModified value of rows of uri's that are in SI but not in CAOM.
+    ## If more than 0 rows, add a first column with the text MISSING_IN_CAOM.
     missing_in_caom = pl.DataFrame()
     missing_in_caom = si_query_result.join(
         caom_query_result, on='uri', how='anti'
     ).select(
         pl.col('uri'), pl.col('lastModified')
     ).sort('uri')
+    if (len(missing_in_caom) > 0):
+        missing_in_caom = missing_in_caom.with_columns(pl.lit(collections).alias("collection")).select(['collection'] + missing_in_caom.columns)
+        missing_in_caom = missing_in_caom.with_columns(pl.lit("MISSING_IN_CAOM").alias("category")).select(['category'] + missing_in_caom.columns)
 
-    ## create a new dataframe that contains the rows of uri's that are in both CAOM and SI, have different contentCheckSums.
+    ## Create a new dataframe that contains the rows of uri's that are in both CAOM and SI, have different contentCheckSums.
+    ## If more than 0 rows, add a first column with the text DIFF_CHECKSUMS.
     diff_checksums = pl.DataFrame()
     diff_checksums = caom_query_result.join(
         si_query_result, on='uri', suffix='_si'
     ).filter(
         (pl.col('contentCheckSum') != pl.col('contentCheckSum_si')) 
     ).sort('uri')
+    if (len(diff_checksums) > 0):
+        diff_checksums = diff_checksums.with_columns(pl.lit(collections).alias("collection")).select(['collection']  + diff_checksums.columns)
+        diff_checksums = diff_checksums.with_columns(pl.lit("DIFF_CHECKSUMS").alias("category")).select(['category'] + diff_checksums.columns)
+
 
     ## Create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have the same contentCheckSum values but different contentLength values.
+    ## If more than 0 rows, add a first column with the text DIFF_LENGTHS.
     diff_lengths = pl.DataFrame()
     diff_lengths = caom_query_result.join(
         si_query_result, on='uri', suffix='_si'
@@ -182,8 +191,12 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
         (pl.col('contentCheckSum') == pl.col('contentCheckSum_si')) &
         (pl.col('contentLength') != pl.col('contentLength_si'))
     ).sort('uri')
+    if (len(diff_lengths) > 0):
+        diff_lengths = diff_lengths.with_columns(pl.lit(collections).alias("collection")).select(['collection'] + diff_lengths.columns)
+        diff_lengths = diff_lengths.with_columns(pl.lit("DIFF_LENGTHS").alias("category")).select(['category'] + diff_lengths.columns)
 
     ## Create a new dataframe that contains the rows of uri's that are in both CAOM and SI but have different contentType values while other values match.
+    ## If more than 0 rows, add a first column with the text DIFF_TYPES.
     diff_types = pl.DataFrame()
     diff_types = caom_query_result.join(
         si_query_result, on='uri', suffix='_si'
@@ -192,6 +205,9 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
         (pl.col('contentLength') == pl.col('contentLength_si')) &
         (pl.col('contentType') != pl.col('contentType_si'))
     ).sort('uri')
+    if (len(diff_types) > 0):
+        diff_types = diff_types.with_columns(pl.lit(collections).alias("collection")).select(['collection'] + diff_types.columns)
+        diff_types = diff_types.with_columns(pl.lit("DIFF_TYPES").alias("category")).select(['category'] + diff_types.columns)
 
     cmp_end_time = datetime.now(timezone.utc)
     cmp_duration = cmp_end_time - cmp_start_time
@@ -204,42 +220,43 @@ def compare_results(collections, caom_query_result, si_query_result, filename):
     try:
         with open(filename, 'w') as f:
             write_start_time = datetime.now(timezone.utc)
-            f.write(f"Comparison results for collection(s) {collections}\n")
+            f.write(f"Result for collection(s) {collections.replace(MULTI_VALUED_SEPARATOR, " "}\n")
             f.write(f"\n")
-            f.write(f"Processing began on {PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')} UTC\n")
+            f.write(f"Start time UTC\t{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')}\n")
             f.write(f"\n")
-            f.write(f"Total CAOM query time: {CAOM_QUERY_DURATION:.2f} seconds\n")
-            f.write(f"Total SI query time: {SI_QUERY_DURATION:.2f} seconds\n")
-            f.write(f"Total comparison time: {cmp_duration.total_seconds():.2f} seconds\n")
+            f.write(f"CAOM collections queried and duration\t{collections.replace(MULTI_VALUED_SEPARATOR, " ")}\t{format_duration_in_seconds(CAOM_QUERY_DURATION)}\n")
+            f.write(f"SI namespaces queried and duration\t{si_namespaces.replace(MULTI_VALUED_SEPARATOR, " ")}\t{format_duration_in_seconds(SI_QUERY_DURATION)}\n")
+            f.write(f"Comparison duration\t{format_duration(cmp_duration)}\n")
             f.write(f"\n")
-            f.write(f"Files and dataframe size in CAOM: {len(caom_query_result)} rows, {caom_query_result.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size in SI: {len(si_query_result)} rows, {si_query_result.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size for consistent files: {num_consistent_files} rows, {size_consistent_files} bytes\n")
-            f.write(f"Files and dataframe size for in CAOM and not in SI: {len(missing_in_si)} rows, {missing_in_si.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size for in SI and not in CAOM: {len(missing_in_caom)} rows, {missing_in_caom.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with different checksums: {len(diff_checksums)} rows, {diff_checksums.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with same checksum but different lengths: {len(diff_lengths)} rows, {diff_lengths.estimated_size()} bytes\n")
-            f.write(f"Files and dataframe size with same checksums and lengths but different types: {len(diff_types)} rows, {diff_types.estimated_size()} bytes\n")
+            f.write(f"\tNum files\tSize of data in bytes\n")
+            f.write(f"In CAOM\t{len(caom_query_result)}\t{caom_query_result.estimated_size()}\n")
+            f.write(f"In SI\t{len(si_query_result)}\t{si_query_result.estimated_size()}\n")
+            f.write(f"Files and dataframe size for consistent files\t{num_consistent_files}\t{size_consistent_files}\n")
+            f.write(f"In CAOM and not in SI\t{len(missing_in_si)}\t{missing_in_si.estimated_size()}\n")
+            f.write(f"In SI and not in CAOM\t{len(missing_in_caom)}\t{missing_in_caom.estimated_size()}\n")
+            f.write(f"Different checksums\t{len(diff_checksums)}\t{diff_checksums.estimated_size()}\n")
+            f.write(f"Same checksum but different lengths\t{len(diff_lengths)}\t{diff_lengths.estimated_size()}\n")
+            f.write(f"Same checksums and lengths but different types\t{len(diff_types)}\t{diff_types.estimated_size()}\n")
             f.flush()
     
             ## Write the missing files to the output file.
-            write_missing_files(f, filename, "MISSING_IN_SI", missing_in_si)
-            write_missing_files(f, filename, "MISSING_IN_CAOM", missing_in_caom)
+            write_files(f, filename, "MISSING_IN_SI", missing_in_si)
+            write_files(f, filename, "MISSING_IN_CAOM", missing_in_caom)
 
             ## Write the inconsistent files to the output file.
-            write_inconsistent_files(f, filename, "DIFF_CHECKSUMS", diff_checksums)
-            write_inconsistent_files(f, filename, "DIFF_LENGTHS", diff_lengths)
-            write_inconsistent_files(f, filename, "DIFF_TYPES", diff_types)
+            write_files(f, filename, "DIFF_CHECKSUMS", diff_checksums)
+            write_files(f, filename, "DIFF_LENGTHS", diff_lengths)
+            write_files(f, filename, "DIFF_TYPES", diff_types)
             
             ## Finally, write the summary message
             write_end_time = datetime.now(timezone.utc)
             write_duration = write_end_time - write_start_time
-            processing_end_time = datetime.now(timezone.utc)
-            processing_duration = processing_end_time - PROCESSING_START_TIME
+            end_time = datetime.now(timezone.utc)
+            total_duration = end_time - PROCESSING_START_TIME
             
-            message = f"category,collections,processing_start_time,files_in_caom,files_in_si,consistent_files,files_in_caom_not_in_si,files_in_si_not_in_caom,diff_checksums,good_checksums_diff_lengths,good_checksums_lengths_diff_types,caom_query_duration_seconds,si_query_duration_seconds,comparison_duration_seconds,write_duration_seconds,processing_duration_seconds,processing_end_time"
+            message = f"Category\tCollections\tStart time UTC\tArtifacts in CAOM\tFiles in SI\tConsistent files\tFile in CAOM and not in SI\tFiles in Si and not in CAOM\tFiles with different checksums\tFiles with good checksums but different lengths\tFiles with good checksums and lengths but different types\tDuration of CAOM queries\tduration of SI queries\tDuration processing query results\tDuration writing\tTotal duration\tEnd time UTC"
             f.write(f"\n{message}\n")
-            message = f"SUMMARY,{collections},{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')},{len(caom_query_result)},{len(si_query_result)},{num_consistent_files},{len(missing_in_si)},{len(missing_in_caom)},{len(diff_checksums)},{len(diff_lengths)},{len(diff_types)},{CAOM_QUERY_DURATION:.2f},{SI_QUERY_DURATION:.2f},{cmp_duration.total_seconds():.2f},{write_duration.total_seconds():.2f},{processing_duration.total_seconds():.2f},{processing_end_time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
+            message = f"SUMMARY\t{collections}\t{PROCESSING_START_TIME.strftime('%Y-%m-%dT%H:%M:%S')}\t{len(caom_query_result)}\t{len(si_query_result)}\t{num_consistent_files}\t{len(missing_in_si)}\t{len(missing_in_caom)}\t{len(diff_checksums)}\t{len(diff_lengths)}\t{len(diff_types)}\t{format_duration_in_seconds(CAOM_QUERY_DURATION)}\t{format_duration_in_seconds(SI_QUERY_DURATION)}\t{format_duration(cmp_duration)}\t{format_duration(write_duration)}\t{format_duration(total_duration)}\t{end_time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
             f.write(f"{message}\n")
             f.flush()
             print(message)
@@ -272,7 +289,7 @@ def process_collections_namespaces(collections, si_namespaces):
     caom_query_results = pl.DataFrame()
     si_query_results = pl.DataFrame()
 
-    ## If there are underscores (separators), wplit the collections and namespaces into lists.
+    ## If there are underscores (separators), split the collections and namespaces into lists.
   
     if MULTI_VALUED_SEPARATOR in collections:
         collection_list = collections.split(MULTI_VALUED_SEPARATOR)
@@ -306,10 +323,9 @@ def process_collections_namespaces(collections, si_namespaces):
             return
 
     ## Now compare the results and write the differences to a CSV file.
-    si_namespace_names = si_namespaces.replace(':', '-')
-    cmp_filename = f"{cmp_filename}_{collections}_{si_namespace_names}.csv"
+    cmp_filename = f"{cmp_filename}_{collections}.tsv"
     print(f"Comparing  collection(s) {collections} and SI namespace(s) {si_namespaces} and writing results to {cmp_filename}.")  
-    compare_results(collections, caom_query_results, si_query_results, cmp_filename)
+    compare_results(collections, si_namespaces, caom_query_results, si_query_results, cmp_filename)
     
     return
 
@@ -321,7 +337,7 @@ def read_configurations():
     ## Read static configuration files for mapping collections to SI namespaces.
     ## This file must contain the columns collection, si_namespace.
     try:
-        MAPPINGS_CONFIG = pl.read_csv("config/caomSiMappings.csv")
+        MAPPINGS_CONFIG = pl.read_csv("config/caomSiMappings.tsv", separator='\t')
     except FileNotFoundError as e:
         print(f"Error reading configuration file: {e}")
         exit(1)
@@ -329,7 +345,7 @@ def read_configurations():
     ## Read static configuration file for mapping collections to AMS sites.
     ## This file must contain the columns collection, in_si and ams_site.
     try:
-        COLLECTIONS_CONFIG = pl.read_csv("config/caomCollections.csv")
+        COLLECTIONS_CONFIG = pl.read_csv("config/caomCollections.tsv", separator='\t')
     except FileNotFoundError as e:
         print(f"Error reading collections file: {e}")
         exit(1)
@@ -337,7 +353,7 @@ def read_configurations():
     ## Read static configuration file for mapping AMS sites to URLs.
     ## This file must contain the columns site_name and site_url.
     try:
-        SITES_CONFIG = pl.read_csv("config/caomSites.csv")
+        SITES_CONFIG = pl.read_csv("config/caomSites.tsv", separator='\t')
     except FileNotFoundError as e:
         print(f"Error reading sites file: {e}")
         exit(1)
@@ -389,7 +405,8 @@ def validate_collection_list(collection_list):
                 print(f"Collection {collection} not found in collections configuration file.")
                 exit(1)    
     
-    print(f"Collections to be processed: {collection_list}.")
+    print("Collections to be processed: ", end="")
+    print(*collection_list)
     return collection_list
 
 ## Main function to execute the script.
