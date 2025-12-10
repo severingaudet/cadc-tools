@@ -212,7 +212,7 @@ def write_processing_results(collection):
             end_time = datetime.now(timezone.utc)
             total_duration = end_time - START_TIME
             
-            message = f"category\tcollection\tstart time\tobservations with no planes\tplanes with no artifacts\tjunk planes\tnum planes for profile\tnum artifacts\tnum of profile combinations\tquery duration\tprocessing results duration\twrite duration\ttotal duration\tend time"
+            message = f"Category\tCollection\tStart time\tObservations with no planes\tPlanes with no artifacts\tJunk planes\tPlanes to by checked\tArtifacts to be checked\tNum profile combinations\tQuery duration\tProcessing results duration\tWrite duration\tTotal duration\tEnd time"
             f.write(f"\n{message}\n")
             message = f"SUMMARY\t{collection}\t{START_TIME.strftime('%Y-%m-%dT%H:%M:%S')}\t{len(NO_PLANES_DF)}\t{len(NO_ARTIFACTS_DF)}\t{len(JUNK_PLANES_DF)}\t{len(DISTINCT_PLANE_ARTIFACT_TYPES_DF)}\t{len(PLANE_ARTIFACT_TYPES_DF)}\t{len(ALL_TYPES_DF)}\t{format_duration(QUERY_DURATION)}\t{format_duration(PROCESS_RESULTS_DURATION)}\t{format_duration(write_duration)}\t{format_duration(total_duration)}\t{end_time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
             f.write(f"{message}\n")
