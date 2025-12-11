@@ -433,9 +433,9 @@ if __name__ == "__main__":
         exit(1)
 
     ## Check the first argument to determine if help is requested.
-    if len(sys.argv) == 1 and sys.argv[0] in ['--help', '-h']:
-        print(f"Usage: {sys.argv[0]} [collection1 collection2 ...]")
-        print(f"       {sys.argv[0]} <-h || --help>")
+    if len(sys.argv) == 2 and sys.argv[1] in ['--help', '-h']:
+        print(f"Usage: {os.path.basename(sys.argv[0])} [collection1 collection2 ...]")
+        print(f"       {os.path.basename(sys.argv[0])} <-h || --help>")
         exit(0)
 
     ## Reaed all configuration files into global dataframes.
