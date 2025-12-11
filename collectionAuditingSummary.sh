@@ -26,12 +26,14 @@ if [ ! -d "$1" ]; then
     exit 1
 fi
 
-# Set the reports subdirectory variable and chceck that is is readable and not empty
+# Set the reports subdirectory variable and chceck that is is readable and not empty.
 REPORTS_SUBDIR="$1"
 if [ ! -r "$REPORTS_SUBDIR" ] || [ -z "$(ls -A "$REPORTS_SUBDIR")" ]; then
     echo "The specified subdirectory '$REPORTS_SUBDIR' is not readable or is empty."
     exit 1
 fi
+# Strip off any trailing slash from the subdirectory name.
+REPORTS_SUBDIR="${REPORTS_SUBDIR%/}"
 
 # Create the summary TSV filename based on the reports subdirectory name and stripping off the "_reports" suffix.
 SUMMARY_TSV="${REPORTS_SUBDIR/"_reports"}_summary.tsv"
